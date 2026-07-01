@@ -1,7 +1,7 @@
 config:
   model_dir: ~/models
   default_backend: llamacpp
-  llama_server_bin: llama-server
+  llama_server_bin: /home/ec2-user/llama.cpp/build/bin/llama-server
   vllm_server_bin: python -m vllm.entrypoints.openai.api_server
   sglang_server_bin: python -m sglang.launch_server
   tgi_bin: text-generation-launcher
@@ -15,36 +15,9 @@ config:
   max_instances: 4
   health_check_interval: 10
   auto_restart: true
-  auto_restart_max_retries: 3
-  auto_restart_delay: 5
-  hf_mirror_url: https://hf-mirror.com
-  download_max_concurrent: 2
-  default_ctx_size: 4096
-  default_n_gpu_layers: auto
-  default_threads: null
-  default_batch_size: 2048
-  default_n_parallel: 1
-  default_flash_attn: auto
-  default_sleep_idle_seconds: -1
-  default_tensor_parallel_size: 1
-  default_max_model_len: null
-  default_gpu_memory_utilization: 0.9
-  default_max_num_seqs: 64
-  default_vllm_dtype: auto
-  default_tp: 1
-  default_mem_fraction_static: 0.8
-  default_max_num_reqs: 64
 
 presets:
   qwen3-8b-chat:
     description: Qwen3 8B for chat
     backend: llamacpp
     ctx_size: 8192
-    n_gpu_layers: auto
-    n_parallel: 2
-
-  qwen3-8b-vllm:
-    description: Qwen3 8B with vLLM
-    backend: vllm
-    tensor_parallel_size: 2
-    max_model_len: 8192

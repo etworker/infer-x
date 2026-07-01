@@ -213,7 +213,7 @@ class InstanceManager:
         backend = get_backend(backend_type)
 
         # Check if backend is installed
-        from backends import check_backend_installed
+        from .backends import check_backend_installed
         if not check_backend_installed(backend_type):
             raise RuntimeError(
                 f"Backend '{backend_type.value}' is not installed. "
@@ -235,9 +235,9 @@ class InstanceManager:
 
         # For llamacpp, model_path is the .gguf file
         # For vllm/sglang/tgi/lmdeploy, model_path is the model directory or HF model name
-        model_path = Path(cfg.model_dir) / req.model
+        model_path = Path(cfg.model_dir).expanduser() / req.model
         if not model_path.exists():
-            raise FileNotFoundError(f"Model not found: {req.model} (looked in {cfg.model_dir})")
+            raise FileNotFoundError(f"Model not found: {req.model} (looked in {Path(cfg.model_dir).expanduser()})")
 
         port = req.port or self._find_available_port()
         if port in self._ports_in_use and (req.port is None or port != req.port):
@@ -248,6 +248,9 @@ class InstanceManager:
         preset = None
         if req.preset:
             preset = self._config.get_preset(req.preset)
+
+        inst_id = f"inst-{uuid.uuid4().hex[:8]}"
+        log_path = self._logs_dir / f"{inst_id}.log"
 
         # Build params dict for backend
         params = {
@@ -364,10 +367,6 @@ class InstanceManager:
         host = req.host or cfg.default_host
         extra_args = req.extra_args or (preset.extra_args if preset else [])
 
-        inst_id = f"inst-{uuid.uuid4().hex[:8]}"
-        log_path = self._logs_dir / f"{inst_id}.log"
-        params["log_file"] = str(log_path)
-
         # Use backend to build command
         cmd = backend.build_command(
             model_path=str(model_path),
@@ -390,7 +389,7 @@ class InstanceManager:
                 cmd,
                 env=env,
                 stdout=subprocess.DEVNULL,
-                stderr=stderr_file,
+                stderr=open(stderr_file, "w"),
             )
         except FileNotFoundError as e:
             self._release_port(port)
