@@ -48,6 +48,10 @@ class BenchmarkWebManager:
         self._data_dir.mkdir(parents=True, exist_ok=True)
         self._executor = BenchmarkExecutor(data_dir)
         self._active_batches: Dict[str, BenchmarkProgress] = {}
+
+    def set_manager(self, manager):
+        """Set the instance manager for starting/stopping instances."""
+        self._executor.set_manager(manager)
         self._batch_tasks: Dict[str, asyncio.Task] = {}
 
     def list_reports(self) -> List[Dict[str, Any]]:

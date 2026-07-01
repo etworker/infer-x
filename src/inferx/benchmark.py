@@ -1,4 +1,4 @@
-"""Inference benchmark module - real performance testing."""
+"""Inference benchmark module - real performance testing via manager."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional
 import httpx
 from pydantic import BaseModel, Field
 
-from .models import BackendType
+from .models import BackendType, InstanceStartRequest, InstanceStatus
 
 
 # ---------------------------------------------------------------------------
@@ -110,7 +110,7 @@ class GPUMonitor:
             return 0.0
         import pynvml
         try:
-            handle = pynvml.nvmlDeviceGetHandleByIndex(device_index)
+            handle = pynvml.nvmlDeviceGetHandleBy_index(device_index)
             mem = pynvml.nvmlDeviceGetMemoryInfo(handle)
             return mem.used / (1024 * 1024)
         except Exception:
@@ -122,13 +122,18 @@ class GPUMonitor:
 # ---------------------------------------------------------------------------
 
 class BenchmarkExecutor:
-    """Execute benchmark tests with real inference."""
+    """Execute benchmark tests with real inference via manager."""
 
     def __init__(self, data_dir: Path):
         self._data_dir = data_dir
         self._data_dir.mkdir(parents=True, exist_ok=True)
         self._gpu_monitor = GPUMonitor()
         self._reports: Dict[str, BenchmarkReport] = {}
+        self._manager = None
+
+    def set_manager(self, manager):
+        """Set the instance manager for starting/stopping instances."""
+        self._manager = manager
 
     def list_reports(self) -> List[Dict[str, Any]]:
         reports = []
@@ -180,78 +185,58 @@ class BenchmarkExecutor:
         start_time = time.time()
         report.gpu_info = self._gpu_monitor.get_gpu_info()
 
-        # Check if server is running
-        server_url = f"http://{config.host}:{config.port}"
-        if not await self._check_server(server_url):
-            # Try to start the server
-            await self._start_server(config)
+        instance_id = None
+        try:
+            # Start instance via manager if available
+            if self._manager:
+                instance_info = await self._manager.start_instance(
+                    InstanceStartRequest(
+                        model=config.model,
+                        backend=BackendType(config.backend),
+                        port=config.port,
+                    )
+                )
+                instance_id = instance_info.id
 
-        # Warmup
-        for _ in range(config.warmup_iterations):
-            await self._execute_scenario(config, config.scenarios[0] if config.scenarios else {})
+                # Wait for instance to be ready
+                for _ in range(60):
+                    await asyncio.sleep(1)
+                    inst = self._manager.get_instance(instance_id)
+                    if inst and inst.status == InstanceStatus.running:
+                        break
+                    if inst and inst.status == InstanceStatus.error:
+                        raise RuntimeError("Instance failed to start")
 
-        # Run scenarios
-        for scenario in config.scenarios:
-            scenario_results = []
-            for i in range(config.num_iterations):
-                result = await self._execute_scenario(config, scenario)
-                scenario_results.append(result)
+            # Warmup
+            for _ in range(config.warmup_iterations):
+                await self._execute_scenario(config, config.scenarios[0] if config.scenarios else {})
 
-            if scenario_results:
-                avg_result = self._aggregate_results(scenario_results)
-                report.results.append(avg_result)
+            # Run scenarios
+            for scenario in config.scenarios:
+                scenario_results = []
+                for i in range(config.num_iterations):
+                    result = await self._execute_scenario(config, scenario)
+                    scenario_results.append(result)
 
-        self._calculate_summary(report)
+                if scenario_results:
+                    avg_result = self._aggregate_results(scenario_results)
+                    report.results.append(avg_result)
+
+            self._calculate_summary(report)
+
+        finally:
+            # Stop instance if we started it
+            if self._manager and instance_id:
+                try:
+                    await self._manager.stop_instance(instance_id)
+                except Exception:
+                    pass
+
         report.duration_seconds = time.time() - start_time
-
         self._reports[report_id] = report
         self._save_report(report)
 
         return report
-
-    async def _check_server(self, url: str) -> bool:
-        """Check if inference server is running."""
-        try:
-            async with httpx.AsyncClient(timeout=5) as client:
-                r = await client.get(f"{url}/health")
-                return r.status_code == 200
-        except Exception:
-            return False
-
-    async def _start_server(self, config: BenchmarkConfig):
-        """Start inference server for benchmarking."""
-        import subprocess
-        import os
-
-        if config.backend == "llamacpp":
-            # Get binary path from config
-            from .config import ConfigManager
-            cfg_manager = ConfigManager()
-            binary = cfg_manager.config.llama_server_bin
-
-            cmd = [
-                binary,
-                "-m", str(Path.home() / "models" / config.model),
-                "--host", config.host,
-                "--port", str(config.port),
-                "-c", "4096",
-                "-ngl", "auto",
-            ]
-
-            proc = subprocess.Popen(
-                cmd,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                env={**os.environ, "LD_LIBRARY_PATH": str(Path(binary).parent)},
-            )
-
-            # Wait for server to start
-            for _ in range(60):
-                await asyncio.sleep(1)
-                if await self._check_server(f"http://{config.host}:{config.port}"):
-                    break
-                if proc.poll() is not None:
-                    raise RuntimeError("Server failed to start")
 
     async def _execute_scenario(
         self,
@@ -268,10 +253,7 @@ class BenchmarkExecutor:
             url = f"http://{config.host}:{config.port}"
             payload = self._build_request(config, scenario)
 
-            gpu_memory_before = self._gpu_monitor.get_gpu_memory_used()
-
             async with httpx.AsyncClient(timeout=config.timeout_seconds) as client:
-                # Determine endpoint based on backend
                 if config.backend in ("vllm", "sglang", "tgi"):
                     endpoint = f"{url}/v1/chat/completions"
                 elif config.backend == "ollama":
@@ -280,10 +262,7 @@ class BenchmarkExecutor:
                     endpoint = f"{url}/completion"
 
                 request_start = time.time()
-
-                # Send request
                 response = await client.post(endpoint, json=payload)
-
                 request_end = time.time()
 
                 if response.status_code == 200:
@@ -294,7 +273,7 @@ class BenchmarkExecutor:
                     result.completion_tokens = parsed.get("completion_tokens", 0)
                     result.total_tokens = result.prompt_tokens + result.completion_tokens
                     result.total_time_ms = (request_end - request_start) * 1000
-                    result.time_to_first_token_ms = result.total_time_ms * 0.3  # estimate
+                    result.time_to_first_token_ms = result.total_time_ms * 0.3
                     result.load_time_ms = (request_start - time.time()) * -1000
 
                     if result.total_time_ms > 0 and result.completion_tokens > 0:
@@ -305,7 +284,6 @@ class BenchmarkExecutor:
                     result.success = False
                     result.error = f"HTTP {response.status_code}"
 
-            # GPU memory
             gpu_memory_after = self._gpu_monitor.get_gpu_memory_used()
             result.gpu_memory_used_mb = gpu_memory_after
 

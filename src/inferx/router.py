@@ -53,6 +53,9 @@ def init_routes(config: ConfigManager, manager: InstanceManager) -> None:
     _usage_tracker = UsageTracker(data_dir)
     _audit_logger = AuditLogger(data_dir)
 
+    # Initialize benchmark web manager with manager
+    _bench_web().set_manager(manager)
+
 
 def _mgr() -> InstanceManager:
     assert _manager is not None
@@ -813,6 +816,9 @@ def _bench_web():
         from .benchmark_web import BenchmarkWebManager
         data_dir = Path(__file__).parent.parent.parent / "data" / "benchmarks"
         _benchmark_web = BenchmarkWebManager(data_dir)
+        # Set manager for instance lifecycle management
+        if _manager:
+            _benchmark_web.set_manager(_manager)
     return _benchmark_web
 
 

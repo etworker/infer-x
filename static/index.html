@@ -1267,6 +1267,13 @@ function startBenchmarkPolling() {
               <div style="font-size:12px;color:var(--text2);margin-bottom:8px">
                 Models: ${(b.models || []).join(', ')} | Backends: ${(b.backends || []).join(', ')}
               </div>
+              ${b.current_model && b.current_backend ? `
+              <div style="font-size:12px;margin-bottom:8px">
+                <span style="color:var(--accent2)">Current:</span>
+                <span class="badge badge-running" style="margin-left:4px">${b.current_backend}</span>
+                <span style="margin-left:4px;font-weight:500">${b.current_model}</span>
+              </div>
+              ` : ''}
               <div class="progress">
                 <div class="progress-bar" style="width:${progress}%"></div>
               </div>
