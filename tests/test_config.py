@@ -3,8 +3,8 @@
 import pytest
 import tempfile
 from pathlib import Path
-from infer_helper.config import ConfigManager
-from infer_helper.models import BackendType, Preset
+from inferx.config import ConfigManager
+from inferx.models import BackendType, Preset
 
 
 class TestConfigManager:

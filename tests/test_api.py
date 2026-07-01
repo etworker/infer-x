@@ -1,13 +1,26 @@
 """Tests for API endpoints."""
 
 import pytest
+from pathlib import Path
 from fastapi.testclient import TestClient
-from infer_helper.main import app
+from inferx.main import app
+from inferx.config import ConfigManager
+from inferx.manager import InstanceManager
+from inferx.router import init_routes
+
+
+@pytest.fixture(scope="module")
+def setup_app():
+    """Initialize app for testing."""
+    config = ConfigManager()
+    manager = InstanceManager(config)
+    init_routes(config, manager)
+    return app
 
 
 @pytest.fixture
-def client():
-    return TestClient(app)
+def client(setup_app):
+    return TestClient(setup_app)
 
 
 class TestSystemEndpoints:

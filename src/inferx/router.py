@@ -113,7 +113,7 @@ async def system_health():
 @router.get("/system/backends")
 async def list_backends():
     """List all supported inference backends with installation status."""
-    from backends import get_all_backends_status
+    from .backends import get_all_backends_status
     backends = get_all_backends_status()
     return {
         "backends": backends,

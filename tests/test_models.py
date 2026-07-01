@@ -1,7 +1,7 @@
 """Tests for data models."""
 
 import pytest
-from infer_helper.models import (
+from inferx.models import (
     BackendType,
     DefaultConfig,
     InstanceStartRequest,

@@ -1,4 +1,4 @@
-"""Inference Server Manager - HTTP API entry point."""
+"""InferX - HTTP API entry point."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
-logger = logging.getLogger("infer_helper")
+logger = logging.getLogger("inferx")
 
 _config: ConfigManager | None = None
 _manager: InstanceManager | None = None
@@ -43,7 +43,7 @@ async def lifespan(app: FastAPI):
     await _manager.shutdown()
 
 
-app = FastAPI(title="Inference Server Manager", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="InferX", version="1.0.0", lifespan=lifespan)
 app.include_router(router)
 
 STATIC_DIR = Path(__file__).parent.parent.parent / "static"
@@ -56,7 +56,7 @@ async def index():
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Inference Server Manager")
+    parser = argparse.ArgumentParser(description="InferX - Multi-backend inference engine manager")
     parser.add_argument("--host", default="0.0.0.0", help="Listen host (default: 0.0.0.0)")
     parser.add_argument("--port", type=int, default=8999, help="Listen port (default: 8999)")
     parser.add_argument("--config", default=None, help="Config file path")

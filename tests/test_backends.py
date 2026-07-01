@@ -2,10 +2,10 @@
 
 import pytest
 from pathlib import Path
-from infer_helper.backends import get_backend, check_backend_installed
-from infer_helper.backends.llamacpp import LlamaCppBackend
-from infer_helper.backends.vllm import VLLMBackend
-from infer_helper.backends.sglang import SGLangBackend
+from inferx.backends import get_backend, check_backend_installed
+from inferx.backends.llamacpp import LlamaCppBackend
+from inferx.backends.vllm import VLLMBackend
+from inferx.backends.sglang import SGLangBackend
 
 
 class TestLlamaCppBackend:

@@ -1,4 +1,4 @@
-# Inference Server Manager
+# InferX
 
 多后端推理引擎管理工具，支持 llama.cpp、vLLM、SGLang、TGI、Ollama、TensorRT-LLM、LMDeploy、OpenVINO 八种推理后端。
 
@@ -24,7 +24,7 @@ pip install -e .
 ### 运行
 
 ```bash
-python -m infer_helper.main --port 8999
+python -m inferx.main --port 8999
 ```
 
 访问 http://localhost:8999
@@ -32,15 +32,15 @@ python -m infer_helper.main --port 8999
 ### Docker
 
 ```bash
-docker build -t infer-helper .
-docker run -p 8999:8999 infer-helper
+docker build -t inferx .
+docker run -p 8999:8999 inferx
 ```
 
 ## 项目结构
 
 ```
-infer_helper/
-├── src/infer_helper/
+inferx/
+├── src/inferx/
 │   ├── __init__.py
 │   ├── main.py           # 入口
 │   ├── config.py          # 配置管理
