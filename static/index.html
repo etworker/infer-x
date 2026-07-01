@@ -543,10 +543,30 @@ async function renderDashboard() {
   const p = document.getElementById('page-dashboard');
 
   // running instances table
-  const instRows = instances.map(inst => `
+  const instRows = instances.map(inst => {
+    // Build backend-specific params display
+    let params = [];
+    if (inst.backend === 'llamacpp') {
+      if (inst.ctx_size) params.push(`ctx: ${inst.ctx_size}`);
+      if (inst.n_gpu_layers) params.push(`ngl: ${inst.n_gpu_layers}`);
+      if (inst.n_parallel) params.push(`np: ${inst.n_parallel}`);
+    } else if (inst.backend === 'vllm') {
+      if (inst.tensor_parallel_size) params.push(`tp: ${inst.tensor_parallel_size}`);
+      if (inst.max_model_len) params.push(`max_len: ${inst.max_model_len}`);
+      if (inst.gpu_memory_utilization) params.push(`gpu_mem: ${inst.gpu_memory_utilization}`);
+    } else if (inst.backend === 'sglang') {
+      if (inst.tp) params.push(`tp: ${inst.tp}`);
+      if (inst.mem_fraction_static) params.push(`mem: ${inst.mem_fraction_static}`);
+      if (inst.max_num_reqs) params.push(`reqs: ${inst.max_num_reqs}`);
+    }
+    const paramsStr = params.length > 0 ? params.join(', ') : '-';
+    
+    return `
     <tr>
       <td><span class="badge badge-${inst.status}">${inst.status}</span></td>
       <td style="font-weight:500">${inst.model}</td>
+      <td><span class="badge badge-running">${inst.backend || 'llamacpp'}</span></td>
+      <td style="font-size:12px;color:var(--text2)">${paramsStr}</td>
       <td>${inst.port}</td>
       <td>${inst.pid || '-'}</td>
       <td>${inst.ram_usage_mb ? fmtMB(inst.ram_usage_mb) : '-'}</td>
@@ -556,7 +576,7 @@ async function renderDashboard() {
         <button class="btn-danger btn-sm" onclick="stopInstance('${inst.id}')">Stop</button>
       </td>
     </tr>
-  `).join('');
+  `}).join('');
 
   if (!dashboardInited) {
     dashboardInited = true;
@@ -619,7 +639,7 @@ async function renderDashboard() {
     instBody.innerHTML = '<div style="text-align:center;color:var(--text2);padding:24px">No running models</div>';
   } else {
     instBody.innerHTML = `<div class="table-wrap"><table>
-      <thead><tr><th>Status</th><th>Model</th><th>Port</th><th>PID</th><th>RAM</th><th>Uptime</th><th>Actions</th></tr></thead>
+      <thead><tr><th>Status</th><th>Model</th><th>Backend</th><th>Parameters</th><th>Port</th><th>PID</th><th>RAM</th><th>Uptime</th><th>Actions</th></tr></thead>
       <tbody>${instRows}</tbody>
     </table></div>`;
   }
