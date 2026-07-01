@@ -1,124 +1,105 @@
-# llama.cpp-manager
+# Inference Server Manager
 
-A lightweight HTTP API tool for managing multiple [llama.cpp](https://github.com/ggml-org/llama.cpp) server instances. Provides a web UI for model management, instance lifecycle control, GPU monitoring, and multi-source model downloading.
+多后端推理引擎管理工具，支持 llama.cpp、vLLM、SGLang、TGI、Ollama、TensorRT-LLM、LMDeploy、OpenVINO 八种推理后端。
 
-## Features
+## 功能特性
 
-- **Web UI** — Browser-based dashboard for all operations
-- **Multi-instance** — Run multiple models simultaneously on one GPU/CPU
-- **Model Download** — HuggingFace, ModelScope, HF-Mirror, direct URL
-- **Real-time Monitoring** — GPU memory/utilization, CPU, RAM charts
-- **Auto Restart** — Crash detection with configurable retry strategy
-- **Config Persistence** — YAML config + preset templates
-- **Health Checks** — Automatic readiness detection per instance
+- **多后端支持** - 统一管理 8 种推理引擎
+- **Web UI** - 浏览器端仪表盘
+- **多实例管理** - 同时运行多个模型
+- **模型下载** - 支持 HuggingFace、ModelScope、URL 下载
+- **实时监控** - GPU/CPU/内存监控
+- **告警系统** - 资源阈值告警
+- **使用统计** - 请求计数、延迟统计
+- **审计日志** - 操作历史记录
 
-## Quick Start
+## 快速开始
 
-### Prerequisites
-
-- Python 3.10+
-- llama.cpp compiled with CUDA support (`llama-server` binary)
-
-### Install
+### 安装
 
 ```bash
-git clone https://github.com/etworker/llama.cpp-manager.git
-cd llama.cpp-manager
-pip install -r requirements.txt
+pip install -e .
 ```
 
-### Run
+### 运行
 
 ```bash
-python main.py --port 9000
+python -m infer_helper.main --port 8999
 ```
 
-Open `http://localhost:9000` in your browser.
+访问 http://localhost:8999
 
-### Docker (optional)
+### Docker
 
 ```bash
-docker build -t llama-cpp-manager .
-docker run -p 9000:9000 -v /path/to/models:/models llama-cpp-manager
+docker build -t infer-helper .
+docker run -p 8999:8999 infer-helper
 ```
 
-## Configuration
+## 项目结构
 
-Edit `config.yaml` or use the web UI Config page:
+```
+infer_helper/
+├── src/infer_helper/
+│   ├── __init__.py
+│   ├── main.py           # 入口
+│   ├── config.py          # 配置管理
+│   ├── models.py          # 数据模型
+│   ├── manager.py         # 实例管理
+│   ├── backends/          # 后端实现
+│   │   ├── base.py
+│   │   ├── llamacpp.py
+│   │   ├── vllm.py
+│   │   └── ...
+│   ├── monitoring.py      # 监控告警
+│   ├── downloader.py      # 模型下载
+│   ├── monitor.py         # 资源监控
+│   └── router.py          # API 路由
+├── static/
+│   └── index.html
+├── tests/
+│   ├── test_models.py
+│   ├── test_backends.py
+│   └── test_api.py
+├── config.yaml
+├── requirements.txt
+└── README.md
+```
+
+## API 文档
+
+启动服务后访问 http://localhost:8999/docs 查看 Swagger 文档。
+
+### 主要端点
+
+| 方法 | 端点 | 说明 |
+|------|------|------|
+| GET | `/api/system/info` | 系统信息 |
+| GET | `/api/system/backends` | 后端列表 |
+| GET | `/api/instances` | 实例列表 |
+| POST | `/api/instances` | 启动实例 |
+| GET | `/api/alerts` | 告警列表 |
+| GET | `/api/stats/overview` | 使用统计 |
+
+## 测试
+
+```bash
+pip install -r requirements-dev.txt
+pytest tests/
+```
+
+## 配置
+
+编辑 `config.yaml` 或通过 Web UI 配置页面修改：
 
 ```yaml
 config:
-  model_dir: /path/to/models          # Model storage directory
-  llama_server_bin: /path/to/llama-server  # llama.cpp binary path
-  port_range_start: 8080              # Instance port range
+  model_dir: ~/models
+  default_backend: llamacpp
+  port_range_start: 8080
   port_range_end: 8180
-  default_ctx_size: 4096
-  default_host: "0.0.0.0"             # Bind address for instances
-  max_instances: 4
-  auto_restart: true
-  auto_restart_max_retries: 3
 ```
 
-### Presets
+## 许可证
 
-Presets are saved parameter templates for quick model startup:
-
-```yaml
-presets:
-  qwen3-8b-chat:
-    description: Qwen3 8B for chat
-    ctx_size: 8192
-    n_parallel: 2
-    batch_size: 2048
-```
-
-## API Reference
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/system/info` | System info (GPU, CPU, RAM) |
-| GET | `/api/system/health` | Health check |
-| GET | `/api/models` | List local models |
-| POST | `/api/models/download` | Download model |
-| GET | `/api/instances` | List running instances |
-| POST | `/api/instances` | Start new instance |
-| DELETE | `/api/instances/{id}` | Stop instance |
-| POST | `/api/instances/{id}/restart` | Restart instance |
-| GET | `/api/presets` | List presets |
-| POST | `/api/presets` | Create preset |
-
-Full interactive API docs available at `/docs` (Swagger UI).
-
-## Project Structure
-
-```
-llama.cpp-manager/
-├── main.py          # FastAPI entry point
-├── config.py        # YAML config management
-├── models.py        # Pydantic data models
-├── manager.py       # Instance lifecycle management
-├── downloader.py    # Multi-source model downloader
-├── monitor.py       # GPU/RAM/CPU monitoring
-├── router.py        # API routes
-├── config.yaml      # Default configuration
-├── static/
-│   └── index.html   # Web UI
-└── requirements.txt
-```
-
-## Requirements
-
-```
-fastapi>=0.100.0
-uvicorn>=0.23.0
-httpx>=0.24.0
-psutil>=5.9.0
-pydantic>=2.0.0
-pyyaml>=6.0
-nvidia-ml-py>=12.0.0
-huggingface-hub>=0.14.0
-```
-
-## License
-
-MIT
+MIT License - 详见 [LICENSE](LICENSE)

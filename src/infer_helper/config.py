@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 import yaml
 
-from models import DefaultConfig, Preset
+from .models import DefaultConfig, Preset
 
-DEFAULT_CONFIG_PATH = Path(__file__).parent / "config.yaml"
+DEFAULT_CONFIG_PATH = Path(__file__).parent.parent.parent / "config.yaml"
 
 
 class ConfigManager:
@@ -19,8 +18,6 @@ class ConfigManager:
         self._config = DefaultConfig()
         self._presets: Dict[str, Preset] = {}
         self._load()
-
-    # ---- persistence -------------------------------------------------------
 
     def _load(self) -> None:
         if not self._path.exists():
@@ -44,8 +41,6 @@ class ConfigManager:
         with open(self._path, "w", encoding="utf-8") as f:
             yaml.dump(data, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
 
-    # ---- config ------------------------------------------------------------
-
     @property
     def config(self) -> DefaultConfig:
         return self._config
@@ -56,8 +51,6 @@ class ConfigManager:
                 setattr(self._config, k, v)
         self._save()
         return self._config
-
-    # ---- presets ------------------------------------------------------------
 
     def list_presets(self) -> Dict[str, Preset]:
         return dict(self._presets)

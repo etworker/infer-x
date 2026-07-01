@@ -15,7 +15,7 @@ try:
 except Exception:
     _NVML_AVAILABLE = False
 
-from models import GPUInfo, SystemInfo
+from .models import GPUInfo, SystemInfo
 
 
 class ResourceMonitor:
@@ -78,7 +78,7 @@ class ResourceMonitor:
 
     # ---- combined -----------------------------------------------------------
 
-    def get_system_info(self, llama_server_path: str) -> SystemInfo:
+    def get_system_info(self, server_paths: Dict[str, str]) -> SystemInfo:
         gpus = self.get_gpus()
         ram = self.get_ram()
         cpu = self.get_cpu_info()
@@ -86,10 +86,10 @@ class ResourceMonitor:
             gpus=gpus,
             total_ram_mb=ram["total_mb"],
             used_ram_mb=ram["used_mb"],
-            available_ram_mb=ram["available_mb"],
+            available_ram_mb=ram["available_ram_mb"],
             cpu_count=cpu["count"],
             cpu_percent=cpu["percent"],
-            llama_server_path=llama_server_path,
+            server_paths=server_paths,
         )
 
     # ---- per-instance tracking ----------------------------------------------

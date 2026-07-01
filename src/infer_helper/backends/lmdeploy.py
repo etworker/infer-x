@@ -1,0 +1,72 @@
+"""LMDeploy inference backend."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any, Dict, List
+
+from .base import Backend
+
+
+class LMDeployBackend(Backend):
+    """LMDeploy inference backend."""
+
+    def build_command(
+        self,
+        model_path: str,
+        port: int,
+        host: str,
+        log_file: str,
+        params: Dict[str, Any],
+        extra_args: List[str],
+    ) -> List[str]:
+        binary = params.get("binary", "lmdeploy serve api_server")
+
+        if " " in binary:
+            cmd = binary.split()
+        else:
+            cmd = [binary]
+
+        cmd.extend([str(model_path), "--server-port", str(port)])
+
+        if host and host != "0.0.0.0":
+            cmd.extend(["--server-name", host])
+        if params.get("lmdeploy_tp") and params["lmdeploy_tp"] > 1:
+            cmd.extend(["--tp", str(params["lmdeploy_tp"])])
+        if params.get("lmdeploy_session_len"):
+            cmd.extend(["--session-len", str(params["lmdeploy_session_len"])])
+        if params.get("lmdeploy_max_batch_size"):
+            cmd.extend(["--max-batch-size", str(params["lmdeploy_max_batch_size"])])
+        if params.get("lmdeploy_cache_max_entry_count"):
+            cmd.extend(["--cache-max-entry-count", str(params["lmdeploy_cache_max_entry_count"])])
+        if params.get("lmdeploy_quant_policy"):
+            cmd.extend(["--quant-policy", str(params["lmdeploy_quant_policy"])])
+        if params.get("lmdeploy_rope_scaling_factor") and params["lmdeploy_rope_scaling_factor"] > 0:
+            cmd.extend(["--rope-scaling-factor", str(params["lmdeploy_rope_scaling_factor"])])
+        if params.get("lmdeploy_turbomind_tp") and params["lmdeploy_turbomind_tp"] > 1:
+            cmd.extend(["--turbomind-tp", str(params["lmdeploy_turbomind_tp"])])
+
+        cmd.extend(extra_args)
+        return cmd
+
+    def get_env(self, binary_path: str) -> Dict[str, str]:
+        return {}
+
+    def get_model_paths(self, model_dir: Path) -> List[Dict[str, Any]]:
+        models = []
+        if not model_dir.exists():
+            return models
+        for p in sorted(model_dir.iterdir()):
+            if p.is_dir():
+                config_file = p / "config.json"
+                has_safetensors = any(p.glob("*.safetensors"))
+                if config_file.exists() and has_safetensors:
+                    total_size = sum(f.stat().st_size for f in p.glob("*.safetensors"))
+                    models.append({
+                        "name": p.name,
+                        "path": str(p),
+                        "size_mb": round(total_size / (1024 * 1024), 1) if total_size > 0 else 0,
+                        "family": self._guess_family(p.name),
+                        "quantization": None,
+                    })
+        return models

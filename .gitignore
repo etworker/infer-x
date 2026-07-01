@@ -1,11 +1,62 @@
+# Python
 __pycache__/
-*.pyc
-*.pyo
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Type checking
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Logs
 logs/
 *.log
+
+# Data (runtime)
+data/
+
+# Environment
 .env
-*.egg-info/
-dist/
-build/
-.mypy_cache/
-.pytest_cache/
+.env.*
+
+# macOS
+.DS_Store
+
+# MiCode tooling
+.mimocode/

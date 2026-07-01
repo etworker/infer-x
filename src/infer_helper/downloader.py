@@ -9,7 +9,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
-from models import DownloadProgress, DownloadRequest, DownloadSource, DownloadStatus
+from .models import DownloadProgress, DownloadRequest, DownloadSource, DownloadStatus
 
 
 class ModelDownloader:
@@ -26,6 +26,17 @@ class ModelDownloader:
 
     def get_task(self, task_id: str) -> Optional[DownloadProgress]:
         return self._tasks.get(task_id)
+
+    def cancel_task(self, task_id: str) -> bool:
+        """Cancel a download task."""
+        task = self._tasks.get(task_id)
+        if not task:
+            return False
+        if task.status in (DownloadStatus.completed, DownloadStatus.failed):
+            return False
+        task.status = DownloadStatus.failed
+        task.error = "Cancelled by user"
+        return True
 
     async def start_download(self, req: DownloadRequest) -> DownloadProgress:
         task_id = uuid.uuid4().hex[:12]

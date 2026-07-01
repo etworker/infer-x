@@ -1,16 +1,17 @@
 config:
   model_dir: /home/ec2-user/models
+  default_backend: llamacpp
   llama_server_bin: /home/ec2-user/llama.cpp/build/bin/llama-server
+  vllm_server_bin: python -m vllm.entrypoints.openai.api_server
+  sglang_server_bin: python -m sglang.launch_server
+  tgi_bin: docker run --gpus all -p 8080:80 -v /home/ec2-user/models:/models ghcr.io/huggingface/text-generation-inference:latest
+  ollama_bin: ollama
+  tensorrt_llm_bin: python -m tensorrt_llm.commands.tritonserver
+  lmdeploy_bin: lmdeploy serve api_server
+  openvino_bin: ovms
   port_range_start: 8080
   port_range_end: 8180
-  default_ctx_size: 4096
-  default_n_gpu_layers: auto
-  default_threads: null
-  default_batch_size: 2048
-  default_n_parallel: 1
-  default_flash_attn: auto
   default_host: "0.0.0.0"
-  default_sleep_idle_seconds: -1
   max_instances: 4
   health_check_interval: 10
   auto_restart: true
@@ -19,9 +20,99 @@ config:
   hf_mirror_url: https://hf-mirror.com
   download_max_concurrent: 2
 
+  # llama.cpp defaults
+  default_ctx_size: 4096
+  default_n_gpu_layers: auto
+  default_threads: null
+  default_batch_size: 2048
+  default_n_parallel: 1
+  default_flash_attn: auto
+  default_sleep_idle_seconds: -1
+  default_mlock: false
+  default_no_mmap: false
+  default_numa: null
+  default_cont_batching: true
+
+  # vLLM defaults
+  default_tensor_parallel_size: 1
+  default_pipeline_parallel_size: 1
+  default_max_model_len: null
+  default_gpu_memory_utilization: 0.9
+  default_max_num_seqs: 64
+  default_max_num_batched_tokens: null
+  default_vllm_dtype: auto
+  default_quantization: null
+  default_trust_remote_code: false
+  default_chat_template: null
+  default_seed: null
+  default_disable_log_requests: false
+  default_enforce_eager: false
+  default_max_context_len_to_capture: null
+
+  # SGLang defaults
+  default_tp: 1
+  default_mem_fraction_static: 0.8
+  default_max_num_reqs: 64
+  default_nnodes: 1
+  default_nccl_nvls: false
+  default_chunked_prefill_size: null
+  default_mem_cache_size: null
+  default_token_logprob_threshold: null
+  default_schedule_policy: null
+  default_schedule_conservativeness: 1.0
+  default_server_worker_path: null
+
+  # TGI defaults
+  default_tgi_model_id: null
+  default_tgi_max_batch_prefill_tokens: 4096
+  default_tgi_max_batch_total_tokens: null
+  default_tgi_max_concurrent_requests: 64
+  default_tgi_max_input_length: 4096
+  default_tgi_max_total_tokens: 8192
+  default_tgi_sharded: false
+  default_tgi_num_shard: null
+  default_tgi_quantize: null
+  default_tgi_dtype: auto
+  default_tgi_cuda_flash_attention: true
+  default_tgi_disable_grammar: false
+
+  # Ollama defaults
+  default_ollama_num_parallel: 1
+  default_ollama_num_gpu: 99
+  default_ollama_num_ctx: 2048
+  default_ollama_num_batch: 512
+  default_ollama_low_vram: false
+  default_ollama_flash_attention: false
+
+  # TensorRT-LLM defaults
+  default_trt_max_batch_size: 8
+  default_trt_max_input_len: 2048
+  default_trt_max_output_len: 512
+  default_trt_max_seq_len: 2560
+  default_trt_dtype: float16
+  default_trt_deprecate_legacy: true
+
+  # LMDeploy defaults
+  default_lmdeploy_tp: 1
+  default_lmdeploy_session_len: 2048
+  default_lmdeploy_max_batch_size: 128
+  default_lmdeploy_cache_max_entry_count: 0.5
+  default_lmdeploy_quant_policy: 0
+  default_lmdeploy_rope_scaling_factor: 0.0
+  default_lmdeploy_turbomind_tp: 1
+
+  # OpenVINO defaults
+  default_ov_model_name: model
+  default_ov_batch_size: 1
+  default_ov_max_model_len: 256
+  default_ov_nireq: 1
+  default_ov_plugin_config: null
+  default_ov_model_section: null
+
 presets:
   qwen3-8b-chat:
     description: Qwen3 8B for chat, 8K context
+    backend: llamacpp
     ctx_size: 8192
     n_gpu_layers: auto
     n_parallel: 2
@@ -29,6 +120,7 @@ presets:
 
   qwen3-4b-fast:
     description: Qwen3 4B, low latency
+    backend: llamacpp
     ctx_size: 4096
     n_gpu_layers: all
     n_parallel: 4
@@ -36,6 +128,7 @@ presets:
 
   embedding:
     description: Embedding mode, no sampling
+    backend: llamacpp
     ctx_size: 512
     n_gpu_layers: auto
     n_parallel: 8
@@ -43,3 +136,42 @@ presets:
       - --embedding
       - --pooling
       - mean
+
+  qwen3-8b-vllm:
+    description: Qwen3 8B with vLLM
+    backend: vllm
+    tensor_parallel_size: 2
+    max_model_len: 8192
+    max_num_seqs: 64
+
+  qwen3-8b-vllm-awq:
+    description: Qwen3 8B AWQ with vLLM
+    backend: vllm
+    tensor_parallel_size: 2
+    max_model_len: 8192
+    quantization: awq
+
+  qwen3-8b-sglang:
+    description: Qwen3 8B with SGLang
+    backend: sglang
+    tp: 2
+    max_num_reqs: 64
+
+  qwen3-8b-sglang-lpm:
+    description: Qwen3 8B with SGLang, LPM scheduling
+    backend: sglang
+    tp: 2
+    max_num_reqs: 64
+    schedule_policy: lpm
+
+  qwen3-8b-tgi:
+    description: Qwen3 8B with TGI
+    backend: tgi
+    tgi_max_total_tokens: 8192
+    tgi_max_concurrent_requests: 32
+
+  qwen3-8b-lmdeploy:
+    description: Qwen3 8B with LMDeploy
+    backend: lmdeploy
+    lmdeploy_tp: 2
+    lmdeploy_session_len: 8192

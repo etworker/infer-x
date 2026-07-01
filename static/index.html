@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LLaMA.cpp Manager</title>
+<title>Inference Server Manager</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{--bg:#0f1117;--surface:#1a1d27;--surface2:#242836;--border:#2e3345;--text:#e4e6ed;--text2:#8b8fa3;--accent:#6c5ce7;--accent2:#a29bfe;--green:#00b894;--red:#e17055;--yellow:#fdcb6e;--blue:#74b9ff;--radius:8px}
@@ -104,7 +104,7 @@ tr:hover td{background:var(--surface2)}
 <body>
 <div class="app">
   <nav class="sidebar">
-    <h1>LLaMA.cpp<span>Manager</span></h1>
+    <h1>Inference<span>Manager</span></h1>
     <div class="nav-item active" data-page="dashboard">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
       <span>Dashboard</span>
@@ -145,25 +145,214 @@ tr:hover td{background:var(--surface2)}
 
 <!-- Start Instance Modal -->
 <div class="modal-overlay" id="modal-start">
-  <div class="modal">
+  <div class="modal" style="max-height:85vh;overflow-y:auto">
     <h3>Start Instance</h3>
     <div class="form-group">
       <label>Model</label>
       <select id="start-model"></select>
     </div>
     <div class="form-row">
+      <div class="form-group"><label>Backend</label>
+        <select id="start-backend" onchange="onBackendChange()">
+          <option value="llamacpp">llama.cpp</option>
+          <option value="vllm">vLLM</option>
+          <option value="sglang">SGLang</option>
+          <option value="tgi">TGI</option>
+          <option value="ollama">Ollama</option>
+          <option value="tensorrt_llm">TensorRT-LLM</option>
+          <option value="lmdeploy">LMDeploy</option>
+          <option value="openvino">OpenVINO</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Preset</label><select id="start-preset" onchange="onPresetChange()"><option value="">None</option></select></div>
+    </div>
+    <div class="form-row">
       <div class="form-group"><label>Port (auto if empty)</label><input id="start-port" type="number" placeholder="auto"></div>
-      <div class="form-group"><label>Preset</label><select id="start-preset"><option value="">None</option></select></div>
+      <div class="form-group"><label>Host</label><input id="start-host" value="0.0.0.0"></div>
     </div>
-    <div class="form-row">
-      <div class="form-group"><label>Context Size</label><input id="start-ctx" type="number" value="4096"></div>
-      <div class="form-group"><label>GPU Layers</label><input id="start-ngl" value="auto"></div>
+    
+    <!-- llama.cpp parameters -->
+    <div id="params-llamacpp">
+      <h4 style="margin:12px 0 8px;color:var(--text2);font-size:12px">llama.cpp Parameters</h4>
+      <div class="form-row">
+        <div class="form-group"><label>Context Size (-c)</label><input id="start-ctx" type="number" value="4096"></div>
+        <div class="form-group"><label>GPU Layers (-ngl)</label><input id="start-ngl" value="auto"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Parallel Slots (-np)</label><input id="start-np" type="number" value="1"></div>
+        <div class="form-group"><label>Batch Size (-b)</label><input id="start-batch" type="number" value="2048"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Threads (-t)</label><input id="start-threads" type="number" placeholder="auto"></div>
+        <div class="form-group"><label>Flash Attention (-fa)</label><select id="start-fa"><option value="auto">auto</option><option value="on">on</option><option value="off">off</option></select></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Sleep Idle (s)</label><input id="start-sleep-idle" type="number" value="-1"></div>
+        <div class="form-group"><label>Alias (-a)</label><input id="start-alias" placeholder="optional"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Mlock</label><select id="start-mlock"><option value="false">No</option><option value="true">Yes</option></select></div>
+        <div class="form-group"><label>No Mmap</label><select id="start-no-mmap"><option value="false">No</option><option value="true">Yes</option></select></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Numa</label><select id="start-numa"><option value="">off</option><option value="distribute">distribute</option><option value="isolate">isolate</option><option value="numactl">numactl</option></select></div>
+        <div class="form-group"><label>Cont Batching</label><select id="start-cont-batching"><option value="true">Yes</option><option value="false">No</option></select></div>
+      </div>
     </div>
-    <div class="form-row">
-      <div class="form-group"><label>Parallel Slots</label><input id="start-np" type="number" value="1"></div>
-      <div class="form-group"><label>Batch Size</label><input id="start-batch" type="number" value="2048"></div>
+    
+    <!-- vLLM parameters -->
+    <div id="params-vllm" style="display:none">
+      <h4 style="margin:12px 0 8px;color:var(--text2);font-size:12px">vLLM Parameters</h4>
+      <div class="form-row">
+        <div class="form-group"><label>Tensor Parallel Size</label><input id="start-tp" type="number" value="1"></div>
+        <div class="form-group"><label>Pipeline Parallel Size</label><input id="start-pp" type="number" value="1"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Max Model Len</label><input id="start-max-model-len" type="number" placeholder="auto"></div>
+        <div class="form-group"><label>GPU Memory Utilization</label><input id="start-gpu-mem-util" type="number" step="0.05" min="0" max="1" value="0.9"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Max Num Seqs</label><input id="start-max-num-seqs" type="number" value="64"></div>
+        <div class="form-group"><label>Max Num Batched Tokens</label><input id="start-max-num-batched-tokens" type="number" placeholder="auto"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Dtype</label><select id="start-dtype"><option value="">auto</option><option value="float16">float16</option><option value="bfloat16">bfloat16</option><option value="float32">float32</option></select></div>
+        <div class="form-group"><label>Quantization</label><select id="start-quantization"><option value="">none</option><option value="awq">AWQ</option><option value="gptq">GPTQ</option><option value="squeezellm">SqueezeLLM</option></select></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Trust Remote Code</label><select id="start-trust-remote-code"><option value="false">No</option><option value="true">Yes</option></select></div>
+        <div class="form-group"><label>Chat Template</label><input id="start-chat-template" placeholder="path (optional)"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Seed</label><input id="start-seed" type="number" placeholder="random"></div>
+        <div class="form-group"><label>Disable Log Requests</label><select id="start-disable-log"><option value="false">No</option><option value="true">Yes</option></select></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Enforce Eager</label><select id="start-enforce-eager"><option value="false">No</option><option value="true">Yes</option></select></div>
+        <div class="form-group"><label>Max Context Len Capture</label><input id="start-max-ctx-capture" type="number" placeholder="auto"></div>
+      </div>
     </div>
-    <div class="form-group"><label>Flash Attention</label><select id="start-fa"><option value="auto">auto</option><option value="on">on</option><option value="off">off</option></select></div>
+    
+    <!-- SGLang parameters -->
+    <div id="params-sglang" style="display:none">
+      <h4 style="margin:12px 0 8px;color:var(--text2);font-size:12px">SGLang Parameters</h4>
+      <div class="form-row">
+        <div class="form-group"><label>Tensor Parallel (TP)</label><input id="start-sglang-tp" type="number" value="1"></div>
+        <div class="form-group"><label>Mem Fraction Static</label><input id="start-mem-fraction" type="number" step="0.05" min="0" max="1" value="0.8"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Max Num Reqs</label><input id="start-max-num-reqs" type="number" value="64"></div>
+        <div class="form-group"><label>Num Nodes</label><input id="start-nnodes" type="number" value="1"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Chunked Prefill Size</label><input id="start-chunked-prefill" type="number" placeholder="auto"></div>
+        <div class="form-group"><label>Mem Cache Size</label><input id="start-mem-cache-size" type="number" placeholder="auto"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Token Logprob Threshold</label><input id="start-token-logprob" type="number" step="0.01" placeholder="auto"></div>
+        <div class="form-group"><label>Schedule Policy</label><select id="start-schedule-policy"><option value="">default</option><option value="lpm">lpm</option><option value="fcfs">fcfs</option><option value="dfs-weight">dfs-weight</option><option value="lof">lof</option><option value="priority">priority</option></select></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Schedule Conservativeness</label><input id="start-schedule-conservativeness" type="number" step="0.1" value="1.0"></div>
+        <div class="form-group"><label>NCCL NVLS</label><select id="start-nccl-nvls"><option value="false">No</option><option value="true">Yes</option></select></div>
+      </div>
+      <div class="form-group"><label>Server Worker Path</label><input id="start-server-worker-path" placeholder="optional"></div>
+    </div>
+    
+    <!-- TGI parameters -->
+    <div id="params-tgi" style="display:none">
+      <h4 style="margin:12px 0 8px;color:var(--text2);font-size:12px">TGI Parameters</h4>
+      <div class="form-row">
+        <div class="form-group"><label>Model ID</label><input id="start-tgi-model-id" placeholder="HuggingFace model ID"></div>
+        <div class="form-group"><label>Num Shard</label><input id="start-tgi-num-shard" type="number" placeholder="auto"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Max Batch Prefill Tokens</label><input id="start-tgi-max-batch-prefill" type="number" value="4096"></div>
+        <div class="form-group"><label>Max Batch Total Tokens</label><input id="start-tgi-max-batch-total" type="number" placeholder="auto"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Max Concurrent Requests</label><input id="start-tgi-max-concurrent" type="number" value="64"></div>
+        <div class="form-group"><label>Max Input Length</label><input id="start-tgi-max-input" type="number" value="4096"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Max Total Tokens</label><input id="start-tgi-max-total" type="number" value="8192"></div>
+        <div class="form-group"><label>Quantize</label><select id="start-tgi-quantize"><option value="">none</option><option value="bitsandbytes-nf4">BitsAndBytes NF4</option><option value="bitsandbytes-fp4">BitsAndBytes FP4</option><option value="gptq">GPTQ</option><option value="awq">AWQ</option><option value="eetq">EETQ</option><option value="fp8">FP8</option></select></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Dtype</label><select id="start-tgi-dtype"><option value="">auto</option><option value="float16">float16</option><option value="bfloat16">bfloat16</option></select></div>
+        <div class="form-group"><label>Sharded</label><select id="start-tgi-sharded"><option value="false">No</option><option value="true">Yes</option></select></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>CUDA Flash Attention</label><select id="start-tgi-flash-attn"><option value="true">Yes</option><option value="false">No</option></select></div>
+        <div class="form-group"><label>Disable Grammar</label><select id="start-tgi-disable-grammar"><option value="false">No</option><option value="true">Yes</option></select></div>
+      </div>
+    </div>
+    
+    <!-- Ollama parameters -->
+    <div id="params-ollama" style="display:none">
+      <h4 style="margin:12px 0 8px;color:var(--text2);font-size:12px">Ollama Parameters</h4>
+      <div class="form-row">
+        <div class="form-group"><label>Num Parallel</label><input id="start-ollama-num-parallel" type="number" value="1"></div>
+        <div class="form-group"><label>Num GPU</label><input id="start-ollama-num-gpu" type="number" value="99"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Num Ctx</label><input id="start-ollama-num-ctx" type="number" value="2048"></div>
+        <div class="form-group"><label>Num Batch</label><input id="start-ollama-num-batch" type="number" value="512"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Low VRAM</label><select id="start-ollama-low-vram"><option value="false">No</option><option value="true">Yes</option></select></div>
+        <div class="form-group"><label>Flash Attention</label><select id="start-ollama-flash-attn"><option value="false">No</option><option value="true">Yes</option></select></div>
+      </div>
+    </div>
+    
+    <!-- TensorRT-LLM parameters -->
+    <div id="params-tensorrt_llm" style="display:none">
+      <h4 style="margin:12px 0 8px;color:var(--text2);font-size:12px">TensorRT-LLM Parameters</h4>
+      <div class="form-row">
+        <div class="form-group"><label>Max Batch Size</label><input id="start-trt-max-batch" type="number" value="8"></div>
+        <div class="form-group"><label>Max Input Len</label><input id="start-trt-max-input" type="number" value="2048"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Max Output Len</label><input id="start-trt-max-output" type="number" value="512"></div>
+        <div class="form-group"><label>Max Seq Len</label><input id="start-trt-max-seq" type="number" value="2560"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Dtype</label><select id="start-trt-dtype"><option value="float16">float16</option><option value="float32">float32</option><option value="int8">int8</option><option value="int4">int4</option></select></div>
+        <div class="form-group"><label>Deprecate Legacy</label><select id="start-trt-deprecate"><option value="true">Yes</option><option value="false">No</option></select></div>
+      </div>
+    </div>
+    
+    <!-- LMDeploy parameters -->
+    <div id="params-lmdeploy" style="display:none">
+      <h4 style="margin:12px 0 8px;color:var(--text2);font-size:12px">LMDeploy Parameters</h4>
+      <div class="form-row">
+        <div class="form-group"><label>Tensor Parallel (TP)</label><input id="start-lmdeploy-tp" type="number" value="1"></div>
+        <div class="form-group"><label>Session Length</label><input id="start-lmdeploy-session" type="number" value="2048"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Max Batch Size</label><input id="start-lmdeploy-max-batch" type="number" value="128"></div>
+        <div class="form-group"><label>Cache Max Entry Count</label><input id="start-lmdeploy-cache" type="number" step="0.1" value="0.5"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Quant Policy</label><select id="start-lmdeploy-quant"><option value="0">None</option><option value="4">W4A16</option><option value="8">W8A8</option></select></div>
+        <div class="form-group"><label>Rope Scaling Factor</label><input id="start-lmdeploy-rope" type="number" step="0.1" value="0"></div>
+      </div>
+    </div>
+    
+    <!-- OpenVINO parameters -->
+    <div id="params-openvino" style="display:none">
+      <h4 style="margin:12px 0 8px;color:var(--text2);font-size:12px">OpenVINO Parameters</h4>
+      <div class="form-row">
+        <div class="form-group"><label>Model Name</label><input id="start-ov-model-name" value="model"></div>
+        <div class="form-group"><label>Batch Size</label><input id="start-ov-batch" type="number" value="1"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Max Model Len</label><input id="start-ov-max-len" type="number" value="256"></div>
+        <div class="form-group"><label>NIREQ</label><input id="start-ov-nireq" type="number" value="1"></div>
+      </div>
+      <div class="form-group"><label>Plugin Config</label><input id="start-ov-plugin" placeholder="JSON format (optional)"></div>
+    </div>
+    
     <div class="modal-actions">
       <button class="btn-ghost" onclick="closeModal('modal-start')">Cancel</button>
       <button class="btn-primary" onclick="doStartInstance()">Start</button>
@@ -610,7 +799,8 @@ async function renderInstances() {
             <button class="btn-danger btn-sm" onclick="stopInstance('${inst.id}')">Stop</button>
           </div>
         </div>
-        <div class="stat-grid" style="grid-template-columns:repeat(5,1fr)">
+        <div class="stat-grid" style="grid-template-columns:repeat(6,1fr)">
+          <div class="stat-card"><div class="label">Backend</div><div class="value" style="font-size:14px">${inst.backend || 'llamacpp'}</div></div>
           <div class="stat-card"><div class="label">Port</div><div class="value" style="font-size:16px">${inst.port}</div></div>
           <div class="stat-card"><div class="label">PID</div><div class="value" style="font-size:16px">${inst.pid || '-'}</div></div>
           <div class="stat-card"><div class="label">Context</div><div class="value" style="font-size:16px">${inst.ctx_size.toLocaleString()}</div></div>
@@ -643,17 +833,104 @@ async function quickStart(model) {
 }
 
 async function doStartInstance() {
+  const backend = document.getElementById('start-backend').value;
   const body = {
     model: document.getElementById('start-model').value,
+    backend: backend,
     preset: document.getElementById('start-preset').value || null,
-    ctx_size: parseInt(document.getElementById('start-ctx').value) || null,
-    n_gpu_layers: document.getElementById('start-ngl').value || null,
-    n_parallel: parseInt(document.getElementById('start-np').value) || null,
-    batch_size: parseInt(document.getElementById('start-batch').value) || null,
-    flash_attn: document.getElementById('start-fa').value || null,
+    host: document.getElementById('start-host').value || null,
   };
   const port = document.getElementById('start-port').value;
   if (port) body.port = parseInt(port);
+
+  // Helper to parse int/float
+  const parseIntOrNull = (id) => { const v = document.getElementById(id)?.value; return v ? parseInt(v) : null; };
+  const parseFloatOrNull = (id) => { const v = document.getElementById(id)?.value; return v ? parseFloat(v) : null; };
+  const strOrNull = (id) => document.getElementById(id)?.value || null;
+  const boolOrNull = (id) => { const v = document.getElementById(id)?.value; return v === 'true' ? true : v === 'false' ? false : null; };
+
+  // Add backend-specific parameters
+  if (backend === 'llamacpp') {
+    body.ctx_size = parseIntOrNull('start-ctx');
+    body.n_gpu_layers = strOrNull('start-ngl');
+    body.n_parallel = parseIntOrNull('start-np');
+    body.batch_size = parseIntOrNull('start-batch');
+    body.threads = parseIntOrNull('start-threads');
+    body.flash_attn = strOrNull('start-fa');
+    body.sleep_idle_seconds = parseIntOrNull('start-sleep-idle');
+    body.alias = strOrNull('start-alias');
+    body.mlock = boolOrNull('start-mlock');
+    body.no_mmap = boolOrNull('start-no-mmap');
+    body.numa = strOrNull('start-numa');
+    body.cont_batching = boolOrNull('start-cont-batching');
+  } else if (backend === 'vllm') {
+    body.tensor_parallel_size = parseIntOrNull('start-tp');
+    body.pipeline_parallel_size = parseIntOrNull('start-pp');
+    body.max_model_len = parseIntOrNull('start-max-model-len');
+    body.gpu_memory_utilization = parseFloatOrNull('start-gpu-mem-util');
+    body.max_num_seqs = parseIntOrNull('start-max-num-seqs');
+    body.max_num_batched_tokens = parseIntOrNull('start-max-num-batched-tokens');
+    body.dtype = strOrNull('start-dtype');
+    body.quantization = strOrNull('start-quantization');
+    body.trust_remote_code = boolOrNull('start-trust-remote-code');
+    body.chat_template = strOrNull('start-chat-template');
+    body.seed = parseIntOrNull('start-seed');
+    body.disable_log_requests = boolOrNull('start-disable-log');
+    body.enforce_eager = boolOrNull('start-enforce-eager');
+    body.max_context_len_to_capture = parseIntOrNull('start-max-ctx-capture');
+  } else if (backend === 'sglang') {
+    body.tp = parseIntOrNull('start-sglang-tp');
+    body.mem_fraction_static = parseFloatOrNull('start-mem-fraction');
+    body.max_num_reqs = parseIntOrNull('start-max-num-reqs');
+    body.nnodes = parseIntOrNull('start-nnodes');
+    body.chunked_prefill_size = parseIntOrNull('start-chunked-prefill');
+    body.mem_cache_size = parseIntOrNull('start-mem-cache-size');
+    body.token_logprob_threshold = parseFloatOrNull('start-token-logprob');
+    body.schedule_policy = strOrNull('start-schedule-policy');
+    body.schedule_conservativeness = parseFloatOrNull('start-schedule-conservativeness');
+    body.nccl_nvls = boolOrNull('start-nccl-nvls');
+    body.server_worker_path = strOrNull('start-server-worker-path');
+  } else if (backend === 'tgi') {
+    body.tgi_model_id = strOrNull('start-tgi-model-id');
+    body.tgi_num_shard = parseIntOrNull('start-tgi-num-shard');
+    body.tgi_max_batch_prefill_tokens = parseIntOrNull('start-tgi-max-batch-prefill');
+    body.tgi_max_batch_total_tokens = parseIntOrNull('start-tgi-max-batch-total');
+    body.tgi_max_concurrent_requests = parseIntOrNull('start-tgi-max-concurrent');
+    body.tgi_max_input_length = parseIntOrNull('start-tgi-max-input');
+    body.tgi_max_total_tokens = parseIntOrNull('start-tgi-max-total');
+    body.tgi_quantize = strOrNull('start-tgi-quantize');
+    body.tgi_dtype = strOrNull('start-tgi-dtype');
+    body.tgi_sharded = boolOrNull('start-tgi-sharded');
+    body.tgi_cuda_flash_attention = boolOrNull('start-tgi-flash-attn');
+    body.tgi_disable_grammar = boolOrNull('start-tgi-disable-grammar');
+  } else if (backend === 'ollama') {
+    body.ollama_num_parallel = parseIntOrNull('start-ollama-num-parallel');
+    body.ollama_num_gpu = parseIntOrNull('start-ollama-num-gpu');
+    body.ollama_num_ctx = parseIntOrNull('start-ollama-num-ctx');
+    body.ollama_num_batch = parseIntOrNull('start-ollama-num-batch');
+    body.ollama_low_vram = boolOrNull('start-ollama-low-vram');
+    body.ollama_flash_attention = boolOrNull('start-ollama-flash-attn');
+  } else if (backend === 'tensorrt_llm') {
+    body.trt_max_batch_size = parseIntOrNull('start-trt-max-batch');
+    body.trt_max_input_len = parseIntOrNull('start-trt-max-input');
+    body.trt_max_output_len = parseIntOrNull('start-trt-max-output');
+    body.trt_max_seq_len = parseIntOrNull('start-trt-max-seq');
+    body.trt_dtype = strOrNull('start-trt-dtype');
+    body.trt_deprecate_legacy = boolOrNull('start-trt-deprecate');
+  } else if (backend === 'lmdeploy') {
+    body.lmdeploy_tp = parseIntOrNull('start-lmdeploy-tp');
+    body.lmdeploy_session_len = parseIntOrNull('start-lmdeploy-session');
+    body.lmdeploy_max_batch_size = parseIntOrNull('start-lmdeploy-max-batch');
+    body.lmdeploy_cache_max_entry_count = parseFloatOrNull('start-lmdeploy-cache');
+    body.lmdeploy_quant_policy = parseIntOrNull('start-lmdeploy-quant');
+    body.lmdeploy_rope_scaling_factor = parseFloatOrNull('start-lmdeploy-rope');
+  } else if (backend === 'openvino') {
+    body.ov_model_name = strOrNull('start-ov-model-name');
+    body.ov_batch_size = parseIntOrNull('start-ov-batch');
+    body.ov_max_model_len = parseIntOrNull('start-ov-max-len');
+    body.ov_nireq = parseIntOrNull('start-ov-nireq');
+    body.ov_plugin_config = strOrNull('start-ov-plugin');
+  }
 
   try {
     const inst = await api('/instances', { method: 'POST', body: JSON.stringify(body) });
@@ -661,6 +938,23 @@ async function doStartInstance() {
     closeModal('modal-start');
     renderInstances();
   } catch (e) { toast(e.message, false); }
+}
+
+function onBackendChange() {
+  const backend = document.getElementById('start-backend').value;
+  document.getElementById('params-llamacpp').style.display = backend === 'llamacpp' ? '' : 'none';
+  document.getElementById('params-vllm').style.display = backend === 'vllm' ? '' : 'none';
+  document.getElementById('params-sglang').style.display = backend === 'sglang' ? '' : 'none';
+  document.getElementById('params-tgi').style.display = backend === 'tgi' ? '' : 'none';
+  document.getElementById('params-ollama').style.display = backend === 'ollama' ? '' : 'none';
+  document.getElementById('params-tensorrt_llm').style.display = backend === 'tensorrt_llm' ? '' : 'none';
+  document.getElementById('params-lmdeploy').style.display = backend === 'lmdeploy' ? '' : 'none';
+  document.getElementById('params-openvino').style.display = backend === 'openvino' ? '' : 'none';
+}
+
+function onPresetChange() {
+  // Preset selection could pre-fill parameters based on backend
+  // For now, just clear custom values when preset changes
 }
 
 async function stopInstance(id) {
@@ -705,7 +999,11 @@ async function renderPresets() {
     ${entries.map(([name, pr]) => `
       <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-          <div><span style="font-weight:600">${name}</span> <span style="color:var(--text2);font-size:12px">${pr.description || ''}</span></div>
+          <div>
+            <span style="font-weight:600">${name}</span>
+            <span class="badge badge-running" style="margin-left:8px">${pr.backend || 'llamacpp'}</span>
+            <span style="color:var(--text2);font-size:12px;margin-left:8px">${pr.description || ''}</span>
+          </div>
           <button class="btn-danger btn-sm" onclick="deletePreset('${name}')">Delete</button>
         </div>
         <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--text2)">
@@ -713,6 +1011,8 @@ async function renderPresets() {
           ${pr.n_gpu_layers ? '<span>ngl: '+pr.n_gpu_layers+'</span>' : ''}
           ${pr.n_parallel ? '<span>np: '+pr.n_parallel+'</span>' : ''}
           ${pr.batch_size ? '<span>batch: '+pr.batch_size+'</span>' : ''}
+          ${pr.tensor_parallel_size ? '<span>tp: '+pr.tensor_parallel_size+'</span>' : ''}
+          ${pr.tp ? '<span>tp: '+pr.tp+'</span>' : ''}
           ${pr.extra_args?.length ? '<span>extra: '+pr.extra_args.join(', ')+'</span>' : ''}
         </div>
       </div>
@@ -749,8 +1049,25 @@ async function renderConfig() {
     <div class="card">
       <div class="form-row">
         <div class="form-group"><label>Model Directory</label><input id="cfg-model-dir" value="${cfg.model_dir}"></div>
-        <div class="form-group"><label>LLaMA Server Binary</label><input id="cfg-llama-bin" value="${cfg.llama_server_bin}"></div>
+        <div class="form-group"><label>Default Backend</label>
+          <select id="cfg-default-backend">
+            <option value="llamacpp" ${cfg.default_backend === 'llamacpp' ? 'selected' : ''}>llama.cpp</option>
+            <option value="vllm" ${cfg.default_backend === 'vllm' ? 'selected' : ''}>vLLM</option>
+            <option value="sglang" ${cfg.default_backend === 'sglang' ? 'selected' : ''}>SGLang</option>
+          </select>
+        </div>
       </div>
+      
+      <h4 style="margin:16px 0 8px;color:var(--text2);font-size:13px">llama.cpp</h4>
+      <div class="form-group"><label>Server Binary</label><input id="cfg-llama-bin" value="${cfg.llama_server_bin}"></div>
+      
+      <h4 style="margin:16px 0 8px;color:var(--text2);font-size:13px">vLLM</h4>
+      <div class="form-group"><label>Server Command</label><input id="cfg-vllm-bin" value="${cfg.vllm_server_bin}"></div>
+      
+      <h4 style="margin:16px 0 8px;color:var(--text2);font-size:13px">SGLang</h4>
+      <div class="form-group"><label>Server Command</label><input id="cfg-sglang-bin" value="${cfg.sglang_server_bin}"></div>
+      
+      <h4 style="margin:16px 0 8px;color:var(--text2);font-size:13px">General</h4>
       <div class="form-row">
         <div class="form-group"><label>Port Range Start</label><input id="cfg-port-start" type="number" value="${cfg.port_range_start}"></div>
         <div class="form-group"><label>Port Range End</label><input id="cfg-port-end" type="number" value="${cfg.port_range_end}"></div>
@@ -784,7 +1101,10 @@ async function renderConfig() {
 async function saveConfig() {
   const body = {
     model_dir: document.getElementById('cfg-model-dir').value,
+    default_backend: document.getElementById('cfg-default-backend').value,
     llama_server_bin: document.getElementById('cfg-llama-bin').value,
+    vllm_server_bin: document.getElementById('cfg-vllm-bin').value,
+    sglang_server_bin: document.getElementById('cfg-sglang-bin').value,
     port_range_start: parseInt(document.getElementById('cfg-port-start').value),
     port_range_end: parseInt(document.getElementById('cfg-port-end').value),
     default_ctx_size: parseInt(document.getElementById('cfg-ctx').value),

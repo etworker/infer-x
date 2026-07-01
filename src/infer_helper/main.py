@@ -1,11 +1,9 @@
-"""LLaMA.cpp Manager — HTTP API entry point."""
+"""Inference Server Manager - HTTP API entry point."""
 
 from __future__ import annotations
 
 import argparse
 import logging
-import signal
-import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -14,17 +12,16 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from config import ConfigManager
-from manager import InstanceManager
-from router import init_routes, router
+from .config import ConfigManager
+from .manager import InstanceManager
+from .router import init_routes, router
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
-logger = logging.getLogger("llamacpp_manager")
+logger = logging.getLogger("infer_helper")
 
-# globals shared across the app
 _config: ConfigManager | None = None
 _manager: InstanceManager | None = None
 
@@ -46,10 +43,10 @@ async def lifespan(app: FastAPI):
     await _manager.shutdown()
 
 
-app = FastAPI(title="LLaMA.cpp Manager", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="Inference Server Manager", version="1.0.0", lifespan=lifespan)
 app.include_router(router)
 
-STATIC_DIR = Path(__file__).parent / "static"
+STATIC_DIR = Path(__file__).parent.parent.parent / "static"
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
@@ -59,9 +56,9 @@ async def index():
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="LLaMA.cpp Manager")
+    parser = argparse.ArgumentParser(description="Inference Server Manager")
     parser.add_argument("--host", default="0.0.0.0", help="Listen host (default: 0.0.0.0)")
-    parser.add_argument("--port", type=int, default=9000, help="Listen port (default: 9000)")
+    parser.add_argument("--port", type=int, default=8999, help="Listen port (default: 8999)")
     parser.add_argument("--config", default=None, help="Config file path")
     args = parser.parse_args()
 
