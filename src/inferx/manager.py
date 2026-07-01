@@ -86,26 +86,29 @@ class InstanceManager:
 
     def list_models(self, backend_type: Optional[BackendType] = None) -> List[Dict[str, Any]]:
         """List available models, optionally filtered by backend type."""
-        model_dir = Path(self._config.config.model_dir)
+        model_dir = Path(self._config.config.model_dir).expanduser()
         models = []
 
         if backend_type:
             # Use backend-specific model discovery
-            backend = get_backend(backend_type)
+            backend = get_backend(backend_type.value)
             models = backend.get_model_paths(model_dir)
         else:
             # Discover models for all backends
             for bt in BackendType:
-                backend = get_backend(bt)
-                backend_models = backend.get_model_paths(model_dir)
-                for m in backend_models:
-                    m["backend"] = bt.value
-                models.extend(backend_models)
+                try:
+                    backend = get_backend(bt.value)
+                    backend_models = backend.get_model_paths(model_dir)
+                    for m in backend_models:
+                        m["backend"] = bt.value
+                    models.extend(backend_models)
+                except Exception:
+                    continue
 
         return models
 
     def get_model_info(self, name: str) -> Optional[Dict[str, Any]]:
-        model_dir = Path(self._config.config.model_dir)
+        model_dir = Path(self._config.config.model_dir).expanduser()
         target = model_dir / name
 
         # Try direct path first
@@ -172,7 +175,7 @@ class InstanceManager:
         return None
 
     def delete_model(self, name: str) -> bool:
-        model_dir = Path(self._config.config.model_dir)
+        model_dir = Path(self._config.config.model_dir).expanduser()
         target = model_dir / name
         if target.exists() and target.is_file():
             target.unlink()
