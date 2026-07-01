@@ -86,7 +86,7 @@ class ResourceMonitor:
             gpus=gpus,
             total_ram_mb=ram["total_mb"],
             used_ram_mb=ram["used_mb"],
-            available_ram_mb=ram["available_ram_mb"],
+            available_ram_mb=ram["available_mb"],
             cpu_count=cpu["count"],
             cpu_percent=cpu["percent"],
             server_paths=server_paths,

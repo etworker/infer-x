@@ -688,3 +688,113 @@ async def get_audit_entry(entry_id: str):
     if not entry:
         raise HTTPException(404, f"Audit entry not found: {entry_id}")
     return entry.model_dump()
+
+
+# ===========================================================================
+# Benchmark
+# ===========================================================================
+
+_benchmark_executor = None
+
+
+def _bench():
+    global _benchmark_executor
+    if _benchmark_executor is None:
+        from .benchmark import BenchmarkExecutor
+        data_dir = Path(__file__).parent.parent.parent / "data" / "benchmarks"
+        _benchmark_executor = BenchmarkExecutor(data_dir)
+    return _benchmark_executor
+
+
+class BenchmarkRequest(BaseModel):
+    backend: str
+    model: str
+    host: str = "localhost"
+    port: int = 8080
+    scenarios: Optional[List[Dict[str, Any]]] = None
+    num_iterations: int = 3
+    warmup_iterations: int = 1
+    timeout_seconds: int = 120
+
+
+@router.get("/benchmark/reports")
+async def list_benchmark_reports():
+    """List all benchmark reports."""
+    return {"reports": _bench().list_reports()}
+
+
+@router.get("/benchmark/reports/{report_id}")
+async def get_benchmark_report(report_id: str):
+    """Get a specific benchmark report."""
+    report = _bench().get_report(report_id)
+    if not report:
+        raise HTTPException(404, f"Report not found: {report_id}")
+    return report.model_dump()
+
+
+@router.delete("/benchmark/reports/{report_id}")
+async def delete_benchmark_report(report_id: str):
+    """Delete a benchmark report."""
+    ok = _bench().delete_report(report_id)
+    if not ok:
+        raise HTTPException(404, f"Report not found: {report_id}")
+    return {"success": True}
+
+
+@router.post("/benchmark/run")
+async def run_benchmark(body: BenchmarkRequest):
+    """Run a benchmark test."""
+    from .benchmark import BenchmarkConfig
+
+    config = BenchmarkConfig(
+        backend=body.backend,
+        model=body.model,
+        host=body.host,
+        port=body.port,
+        num_iterations=body.num_iterations,
+        warmup_iterations=body.warmup_iterations,
+        timeout_seconds=body.timeout_seconds,
+    )
+
+    if body.scenarios:
+        config.scenarios = body.scenarios
+
+    try:
+        report = await _bench().run_benchmark(config)
+        return report.model_dump()
+    except Exception as e:
+        raise HTTPException(500, f"Benchmark failed: {str(e)}")
+
+
+@router.get("/benchmark/gpu")
+async def benchmark_gpu_info():
+    """Get GPU information for benchmark."""
+    from .benchmark import GPUMonitor
+    monitor = GPUMonitor()
+    return monitor.get_gpu_info()
+
+
+@router.post("/benchmark/compare")
+async def compare_benchmarks(report_ids: List[str]):
+    """Compare multiple benchmark reports."""
+    reports = []
+    for report_id in report_ids:
+        report = _bench().get_report(report_id)
+        if report:
+            reports.append(report.model_dump())
+
+    if not reports:
+        raise HTTPException(404, "No valid reports found")
+
+    # Build comparison
+    comparison = {
+        "reports": reports,
+        "metrics": {
+            "load_time": {r["id"]: r.get("avg_load_time_ms", 0) for r in reports},
+            "ttft": {r["id"]: r.get("avg_time_to_first_token_ms", 0) for r in reports},
+            "tokens_per_second": {r["id"]: r.get("avg_tokens_per_second", 0) for r in reports},
+            "gpu_memory": {r["id"]: r.get("max_gpu_memory_used_mb", 0) for r in reports},
+        },
+    }
+
+    return comparison
