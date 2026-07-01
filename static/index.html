@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLaMA.cpp Manager</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0f1117;--surface:#1a1d27;--surface2:#242836;--border:#2e3345;--text:#e4e6ed;--text2:#8b8fa3;--accent:#6c5ce7;--accent2:#a29bfe;--green:#00b894;--red:#e17055;--yellow:#fdcb6e;--blue:#74b9ff;--radius:8px}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+a{color:var(--accent2);text-decoration:none}
+button{cursor:pointer;border:none;font-family:inherit;font-size:13px;border-radius:var(--radius);padding:6px 14px;transition:all .15s}
+.btn-primary{background:var(--accent);color:#fff}.btn-primary:hover{background:#5b4bd5}
+.btn-danger{background:var(--red);color:#fff}.btn-danger:hover{background:#d63031}
+.btn-ghost{background:transparent;color:var(--text2);border:1px solid var(--border)}.btn-ghost:hover{border-color:var(--accent);color:var(--accent2)}
+.btn-success{background:var(--green);color:#fff}.btn-success:hover{background:#00a884}
+.btn-sm{padding:4px 10px;font-size:12px}
+input,select{background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:var(--radius);font-size:13px;outline:none;width:100%}
+input:focus,select:focus{border-color:var(--accent)}
+label{font-size:12px;color:var(--text2);margin-bottom:4px;display:block}
+
+/* Layout */
+.app{display:flex;min-height:100vh}
+.sidebar{width:220px;background:var(--surface);border-right:1px solid var(--border);padding:16px 0;flex-shrink:0;position:sticky;top:0;height:100vh}
+.sidebar h1{font-size:15px;padding:0 20px 16px;color:var(--accent2);font-weight:600}
+.sidebar h1 span{color:var(--text2);font-weight:400;font-size:11px;display:block;margin-top:2px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:10px 20px;color:var(--text2);font-size:13px;cursor:pointer;transition:all .15s;border-left:3px solid transparent}
+.nav-item:hover{background:var(--surface2);color:var(--text)}
+.nav-item.active{background:var(--surface2);color:var(--accent2);border-left-color:var(--accent)}
+.nav-item svg{width:16px;height:16px;flex-shrink:0}
+.main{flex:1;padding:24px 32px;max-width:1200px}
+
+/* Cards */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:16px}
+.card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.card-header h2{font-size:15px;font-weight:600}
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+.stat-card{background:var(--surface2);border-radius:var(--radius);padding:14px}
+.stat-card .label{font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px}
+.stat-card .value{font-size:22px;font-weight:600;margin-top:4px}
+.stat-card .sub{font-size:11px;color:var(--text2);margin-top:2px}
+
+/* Table */
+.table-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;padding:8px 12px;border-bottom:1px solid var(--border)}
+td{padding:10px 12px;border-bottom:1px solid var(--border);font-size:13px}
+tr:hover td{background:var(--surface2)}
+
+/* Status badges */
+.badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:500}
+.badge-running{background:rgba(0,184,148,.15);color:var(--green)}
+.badge-starting{background:rgba(253,203,110,.15);color:var(--yellow)}
+.badge-stopped,.badge-error{background:rgba(225,112,85,.15);color:var(--red)}
+.badge-stopping{background:rgba(139,143,163,.15);color:var(--text2)}
+
+/* Progress bar */
+.progress{height:6px;background:var(--surface2);border-radius:3px;overflow:hidden;margin-top:6px}
+.progress-bar{height:100%;background:var(--accent);border-radius:3px;transition:width .3s}
+
+/* GPU bar */
+.gpu-bar{height:20px;background:var(--surface2);border-radius:4px;overflow:hidden;position:relative}
+.gpu-bar-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--blue));border-radius:4px;transition:width .5s}
+.gpu-bar-text{position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:11px;color:#fff;font-weight:500}
+
+/* Realtime charts */
+.chart-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px}
+.chart-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px}
+.chart-card .chart-title{font-size:12px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between}
+.chart-card .chart-title .chart-val{font-size:18px;font-weight:600;color:var(--text)}
+.chart-card canvas{width:100%;height:80px;display:block;border-radius:4px}
+@media(max-width:900px){.chart-grid{grid-template-columns:1fr}}
+
+/* Modal */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100;align-items:center;justify-content:center}
+.modal-overlay.show{display:flex}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;width:500px;max-width:90vw;max-height:80vh;overflow-y:auto}
+.modal h3{margin-bottom:16px;font-size:16px}
+.form-group{margin-bottom:14px}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:20px}
+
+/* Toast */
+.toast{position:fixed;bottom:20px;right:20px;padding:12px 20px;border-radius:var(--radius);font-size:13px;z-index:200;animation:slideIn .3s}
+.toast-ok{background:var(--green);color:#fff}
+.toast-err{background:var(--red);color:#fff}
+@keyframes slideIn{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
+
+/* Log viewer */
+.log-box{background:#0d0f14;border:1px solid var(--border);border-radius:var(--radius);padding:12px;font-family:"Fira Code",monospace;font-size:12px;max-height:300px;overflow-y:auto;line-height:1.6;color:#9ca3af;white-space:pre-wrap;word-break:break-all}
+
+/* Tab */
+.tabs{display:flex;gap:4px;margin-bottom:16px;border-bottom:1px solid var(--border);padding-bottom:0}
+.tab{padding:8px 16px;font-size:13px;color:var(--text2);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+.tab.active{color:var(--accent2);border-bottom-color:var(--accent)}
+
+/* Responsive */
+@media(max-width:768px){
+.sidebar{width:56px;overflow:hidden}.sidebar h1,.nav-item span{display:none}.nav-item{justify-content:center;padding:12px}
+.main{padding:16px}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <nav class="sidebar">
+    <h1>LLaMA.cpp<span>Manager</span></h1>
+    <div class="nav-item active" data-page="dashboard">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      <span>Dashboard</span>
+    </div>
+    <div class="nav-item" data-page="models">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      <span>Models</span>
+    </div>
+    <div class="nav-item" data-page="download">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 16v1a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-1"/><polyline points="8 8 12 4 16 8"/><line x1="12" y1="4" x2="12" y2="16"/></svg>
+      <span>Download</span>
+    </div>
+    <div class="nav-item" data-page="instances">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><circle cx="6" cy="6" r="1"/><circle cx="6" cy="18" r="1"/></svg>
+      <span>Instances</span>
+    </div>
+    <div class="nav-item" data-page="presets">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4m0 14v4M4.22 4.22l2.83 2.83m9.9 9.9l2.83 2.83M1 12h4m14 0h4M4.22 19.78l2.83-2.83m9.9-9.9l2.83-2.83"/></svg>
+      <span>Presets</span>
+    </div>
+    <div class="nav-item" data-page="config">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+      <span>Config</span>
+    </div>
+    <a class="nav-item" href="/docs" target="_blank" style="text-decoration:none">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+      <span>API Docs</span>
+    </a>
+  </nav>
+
+  <div class="main" id="page-dashboard"></div>
+  <div class="main" id="page-models" style="display:none"></div>
+  <div class="main" id="page-download" style="display:none"></div>
+  <div class="main" id="page-instances" style="display:none"></div>
+  <div class="main" id="page-presets" style="display:none"></div>
+  <div class="main" id="page-config" style="display:none"></div>
+</div>
+
+<!-- Start Instance Modal -->
+<div class="modal-overlay" id="modal-start">
+  <div class="modal">
+    <h3>Start Instance</h3>
+    <div class="form-group">
+      <label>Model</label>
+      <select id="start-model"></select>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Port (auto if empty)</label><input id="start-port" type="number" placeholder="auto"></div>
+      <div class="form-group"><label>Preset</label><select id="start-preset"><option value="">None</option></select></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Context Size</label><input id="start-ctx" type="number" value="4096"></div>
+      <div class="form-group"><label>GPU Layers</label><input id="start-ngl" value="auto"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Parallel Slots</label><input id="start-np" type="number" value="1"></div>
+      <div class="form-group"><label>Batch Size</label><input id="start-batch" type="number" value="2048"></div>
+    </div>
+    <div class="form-group"><label>Flash Attention</label><select id="start-fa"><option value="auto">auto</option><option value="on">on</option><option value="off">off</option></select></div>
+    <div class="modal-actions">
+      <button class="btn-ghost" onclick="closeModal('modal-start')">Cancel</button>
+      <button class="btn-primary" onclick="doStartInstance()">Start</button>
+    </div>
+  </div>
+</div>
+
+<!-- Download Modal -->
+<div class="modal-overlay" id="modal-download">
+  <div class="modal">
+    <h3>Download Model</h3>
+    <div class="form-group">
+      <label>Source</label>
+      <select id="dl-source" onchange="onDlSourceChange()">
+        <option value="hf">HuggingFace</option>
+        <option value="hf_mirror">HF Mirror</option>
+        <option value="ms">ModelScope</option>
+        <option value="url">URL</option>
+      </select>
+    </div>
+    <div class="form-group" id="dl-repo-group">
+      <label>Repository (user/repo)</label>
+      <input id="dl-repo" placeholder="e.g. Qwen/Qwen3-8B-GGUF">
+    </div>
+    <div class="form-group" id="dl-file-group">
+      <label>Filename (optional, auto-detect)</label>
+      <input id="dl-file" placeholder="e.g. qwen3-8b-q4_k_m.gguf">
+    </div>
+    <div class="form-group" id="dl-url-group" style="display:none">
+      <label>Download URL</label>
+      <input id="dl-url" placeholder="https://...">
+    </div>
+    <div class="form-group">
+      <label>Save as (optional)</label>
+      <input id="dl-save" placeholder="filename.gguf">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-ghost" onclick="closeModal('modal-download')">Cancel</button>
+      <button class="btn-primary" onclick="doDownload()">Download</button>
+    </div>
+  </div>
+</div>
+
+<!-- Log Modal -->
+<div class="modal-overlay" id="modal-log">
+  <div class="modal" style="width:700px">
+    <h3>Instance Logs</h3>
+    <div class="log-box" id="log-content">Loading...</div>
+    <div class="modal-actions">
+      <button class="btn-ghost" onclick="closeModal('modal-log')">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = '/api';
+let currentPage = 'dashboard';
+
+// ---- Navigation ----
+document.querySelectorAll('.nav-item').forEach(el => {
+  el.addEventListener('click', () => {
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    el.classList.add('active');
+    const page = el.dataset.page;
+    document.querySelectorAll('.main').forEach(m => m.style.display = 'none');
+    document.getElementById('page-' + page).style.display = '';
+    currentPage = page;
+    refreshPage();
+  });
+});
+
+// ---- API helpers ----
+async function api(path, opts = {}) {
+  const res = await fetch(API + path, {
+    headers: { 'Content-Type': 'application/json', ...opts.headers },
+    ...opts,
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(e.detail || e.error || 'Request failed');
+  }
+  return res.json();
+}
+
+function toast(msg, ok = true) {
+  const t = document.createElement('div');
+  t.className = 'toast ' + (ok ? 'toast-ok' : 'toast-err');
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 3000);
+}
+
+function fmt(b) { return b >= 1073741824 ? (b/1073741824).toFixed(1)+' GB' : b >= 1048576 ? (b/1048576).toFixed(0)+' MB' : (b/1024).toFixed(0)+' KB'; }
+function fmtMB(mb) { return mb >= 1024 ? (mb/1024).toFixed(1)+' GB' : mb.toFixed(0)+' MB'; }
+function fmtPct(p) { return p != null ? p.toFixed(0) + '%' : '-'; }
+function ago(t) {
+  if (!t) return '-';
+  const s = Math.floor((Date.now() - new Date(t).getTime()) / 1000);
+  if (s < 60) return s + 's';
+  if (s < 3600) return Math.floor(s/60) + 'm';
+  return Math.floor(s/3600) + 'h ' + Math.floor((s%3600)/60) + 'm';
+}
+
+function openModal(id) { document.getElementById(id).classList.add('show'); }
+function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+
+// ---- Page renderers ----
+async function refreshPage() {
+  try {
+    if (currentPage === 'dashboard') await renderDashboard();
+    else if (currentPage === 'models') await renderModels();
+    else if (currentPage === 'download') await renderDownload();
+    else if (currentPage === 'instances') await renderInstances();
+    else if (currentPage === 'presets') await renderPresets();
+    else if (currentPage === 'config') await renderConfig();
+  } catch (e) { console.error(e); }
+}
+
+// ---- Dashboard ----
+// ---- Realtime chart history ----
+const MAX_HISTORY = 30;
+const chartHistory = { gpuMem: [], gpuUtil: [], cpuPct: [], ramPct: [] };
+let dashboardInited = false;
+
+function drawChart(canvasId, data, maxVal, color, fillColor) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas || !data.length) return;
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  ctx.scale(dpr, dpr);
+  const W = rect.width, H = rect.height;
+  ctx.clearRect(0, 0, W, H);
+
+  if (data.length < 2) return;
+  const step = W / (MAX_HISTORY - 1);
+  const pad = 2;
+
+  // fill
+  ctx.beginPath();
+  ctx.moveTo(0, H);
+  data.forEach((v, i) => {
+    const x = i * step;
+    const y = H - pad - (v / maxVal) * (H - pad * 2);
+    i === 0 ? ctx.lineTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.lineTo((data.length - 1) * step, H);
+  ctx.closePath();
+  ctx.fillStyle = fillColor;
+  ctx.fill();
+
+  // line
+  ctx.beginPath();
+  data.forEach((v, i) => {
+    const x = i * step;
+    const y = H - pad - (v / maxVal) * (H - pad * 2);
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // dot on last point
+  const lastX = (data.length - 1) * step;
+  const lastY = H - pad - (data[data.length - 1] / maxVal) * (H - pad * 2);
+  ctx.beginPath();
+  ctx.arc(lastX, lastY, 3, 0, Math.PI * 2);
+  ctx.fillStyle = color;
+  ctx.fill();
+}
+
+async function renderDashboard() {
+  const [info, health, instData] = await Promise.all([api('/system/info'), api('/system/health'), api('/instances')]);
+  const gpu = info.gpus[0];
+  const instances = instData.instances || [];
+
+  // push to history
+  if (gpu) {
+    chartHistory.gpuMem.push(gpu.used_memory_mb);
+    chartHistory.gpuUtil.push(gpu.utilization_pct || 0);
+  }
+  chartHistory.cpuPct.push(info.cpu_percent);
+  chartHistory.ramPct.push(info.total_ram_mb > 0 ? (info.used_ram_mb / info.total_ram_mb * 100) : 0);
+  Object.values(chartHistory).forEach(a => { if (a.length > MAX_HISTORY) a.shift(); });
+
+  const p = document.getElementById('page-dashboard');
+
+  // running instances table
+  const instRows = instances.map(inst => `
+    <tr>
+      <td><span class="badge badge-${inst.status}">${inst.status}</span></td>
+      <td style="font-weight:500">${inst.model}</td>
+      <td>${inst.port}</td>
+      <td>${inst.pid || '-'}</td>
+      <td>${inst.ram_usage_mb ? fmtMB(inst.ram_usage_mb) : '-'}</td>
+      <td>${ago(inst.started_at)}</td>
+      <td>
+        <button class="btn-ghost btn-sm" onclick="showLog('${inst.id}')">Logs</button>
+        <button class="btn-danger btn-sm" onclick="stopInstance('${inst.id}')">Stop</button>
+      </td>
+    </tr>
+  `).join('');
+
+  if (!dashboardInited) {
+    dashboardInited = true;
+    p.innerHTML = `
+      <h2 style="margin-bottom:20px">System Status</h2>
+      <div class="chart-grid">
+        <div class="chart-card">
+          <div class="chart-title">GPU Memory <span class="chart-val" id="cv-gpumem">-</span></div>
+          <canvas id="chart-gpumem"></canvas>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">GPU Utilization <span class="chart-val" id="cv-gpuutil">-</span></div>
+          <canvas id="chart-gpuutil"></canvas>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">CPU Usage <span class="chart-val" id="cv-cpu">-</span></div>
+          <canvas id="chart-cpu"></canvas>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">RAM Usage <span class="chart-val" id="cv-ram">-</span></div>
+          <canvas id="chart-ram"></canvas>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">GPU Memory Bar</div>
+          <div class="gpu-bar" style="margin-top:8px"><div class="gpu-bar-fill" id="gpu-bar-fill"></div><div class="gpu-bar-text" id="gpu-bar-text">-</div></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">Instances <span class="chart-val" id="cv-inst">-</span></div>
+          <div style="margin-top:12px;text-align:center">
+            <div style="font-size:36px;font-weight:700;color:var(--green)" id="cv-inst-running">0</div>
+            <div style="font-size:12px;color:var(--text2);margin-top:4px">running of <span id="cv-inst-total">0</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="card" id="dash-inst-card">
+        <div class="card-header"><h2>Running Models</h2></div>
+        <div id="dash-inst-body"></div>
+      </div>
+    `;
+  }
+
+  // update values
+  const gpuMemPct = gpu ? (gpu.used_memory_mb / gpu.total_memory_mb * 100) : 0;
+  document.getElementById('cv-gpumem').textContent = gpu ? `${fmtMB(gpu.used_memory_mb)} / ${fmtMB(gpu.total_memory_mb)}` : 'N/A';
+  document.getElementById('cv-gpuutil').textContent = gpu ? fmtPct(gpu.utilization_pct) : 'N/A';
+  document.getElementById('cv-cpu').textContent = `${fmtPct(info.cpu_percent)} (${info.cpu_count} cores)`;
+  document.getElementById('cv-ram').textContent = `${fmtMB(info.used_ram_mb)} / ${fmtMB(info.total_ram_mb)}`;
+  document.getElementById('cv-inst-running').textContent = health.instances_running;
+  document.getElementById('cv-inst-total').textContent = health.instances_total;
+  document.getElementById('cv-inst').textContent = `${health.instances_running}/${health.instances_total}`;
+
+  if (gpu) {
+    document.getElementById('gpu-bar-fill').style.width = gpuMemPct.toFixed(1) + '%';
+    document.getElementById('gpu-bar-text').textContent = `${fmtMB(gpu.used_memory_mb)} / ${fmtMB(gpu.total_memory_mb)}`;
+  }
+
+  // update running models
+  const instBody = document.getElementById('dash-inst-body');
+  if (instances.length === 0) {
+    instBody.innerHTML = '<div style="text-align:center;color:var(--text2);padding:24px">No running models</div>';
+  } else {
+    instBody.innerHTML = `<div class="table-wrap"><table>
+      <thead><tr><th>Status</th><th>Model</th><th>Port</th><th>PID</th><th>RAM</th><th>Uptime</th><th>Actions</th></tr></thead>
+      <tbody>${instRows}</tbody>
+    </table></div>`;
+  }
+
+  // draw charts
+  const gpuTotal = gpu ? gpu.total_memory_mb : 1;
+  drawChart('chart-gpumem', chartHistory.gpuMem, gpuTotal, '#6c5ce7', 'rgba(108,92,231,0.15)');
+  drawChart('chart-gpuutil', chartHistory.gpuUtil, 100, '#74b9ff', 'rgba(116,185,255,0.15)');
+  drawChart('chart-cpu', chartHistory.cpuPct, 100, '#fdcb6e', 'rgba(253,203,110,0.15)');
+  drawChart('chart-ram', chartHistory.ramPct, 100, '#00b894', 'rgba(0,184,148,0.15)');
+}
+
+// ---- Models ----
+async function renderModels() {
+  const models = await api('/models');
+  const p = document.getElementById('page-models');
+  p.innerHTML = `
+    <div class="card-header"><h2>Models (${models.length})</h2>
+      <button class="btn-primary" onclick="openDownload()">+ Download</button>
+    </div>
+    <div class="card">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Name</th><th>Size</th><th>Family</th><th>Quantization</th><th>Actions</th></tr></thead>
+          <tbody>${models.map(m => `
+            <tr>
+              <td style="font-weight:500">${m.name}</td>
+              <td>${fmtMB(m.size_mb)}</td>
+              <td>${m.family || '-'}</td>
+              <td>${m.quantization || '-'}</td>
+              <td>
+                <button class="btn-primary btn-sm" onclick="quickStart('${m.name.replace(/'/g,"\\'")}')">Start</button>
+                <button class="btn-danger btn-sm" onclick="deleteModel('${m.name.replace(/'/g,"\\'")}')">Delete</button>
+              </td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+function openDownload() { openModal('modal-download'); }
+
+async function deleteModel(name) {
+  if (!confirm('Delete model ' + name + '?')) return;
+  try {
+    await api('/models/' + encodeURIComponent(name), { method: 'DELETE' });
+    toast('Model deleted');
+    renderModels();
+  } catch (e) { toast(e.message, false); }
+}
+
+function onDlSourceChange() {
+  const s = document.getElementById('dl-source').value;
+  document.getElementById('dl-repo-group').style.display = s === 'url' ? 'none' : '';
+  document.getElementById('dl-url-group').style.display = s === 'url' ? '' : 'none';
+}
+
+async function doDownload() {
+  const body = {
+    source: document.getElementById('dl-source').value,
+    repo: document.getElementById('dl-repo').value || null,
+    filename: document.getElementById('dl-file').value || null,
+    url: document.getElementById('dl-url').value || null,
+    save_name: document.getElementById('dl-save').value || null,
+  };
+  try {
+    await api('/models/download', { method: 'POST', body: JSON.stringify(body) });
+    toast('Download started');
+    closeModal('modal-download');
+  } catch (e) { toast(e.message, false); }
+}
+
+// ---- Download Page ----
+let dlPollTimer = null;
+
+async function renderDownload() {
+  const tasks = await api('/models/download/status');
+  const p = document.getElementById('page-download');
+  const entries = Object.values(tasks);
+
+  p.innerHTML = `
+    <div class="card-header"><h2>Download Model</h2></div>
+    <div class="card">
+      <div class="form-group">
+        <label>Source</label>
+        <select id="dl-page-source" onchange="onDlPageSourceChange()">
+          <option value="hf">HuggingFace</option>
+          <option value="hf_mirror">HF Mirror (国内加速)</option>
+          <option value="ms">ModelScope (国内)</option>
+          <option value="url">Direct URL</option>
+        </select>
+      </div>
+      <div class="form-group" id="dl-page-repo-group">
+        <label>Repository (格式: user/repo)</label>
+        <input id="dl-page-repo" placeholder="例: Qwen/Qwen3-8B-GGUF">
+      </div>
+      <div class="form-group" id="dl-page-file-group">
+        <label>文件名 (可选，自动检测)</label>
+        <input id="dl-page-file" placeholder="例: qwen3-8b-q4_k_m.gguf">
+      </div>
+      <div class="form-group" id="dl-page-url-group" style="display:none">
+        <label>下载地址</label>
+        <input id="dl-page-url" placeholder="https://...">
+      </div>
+      <div class="form-group">
+        <label>保存文件名 (可选)</label>
+        <input id="dl-page-save" placeholder="model.gguf">
+      </div>
+      <button class="btn-primary" onclick="doDlPageDownload()">Start Download</button>
+    </div>
+    <div class="card">
+      <div class="card-header"><h2>Download Tasks</h2></div>
+      ${entries.length === 0 ? '<div style="text-align:center;color:var(--text2);padding:24px">No download tasks</div>' : ''}
+      ${entries.map(t => `
+        <div style="padding:12px 0;border-bottom:1px solid var(--border)">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <div>
+              <span style="font-weight:500">${t.repo || t.filename || t.save_path || t.task_id}</span>
+              <span class="badge badge-${t.status === 'completed' ? 'running' : t.status === 'failed' ? 'error' : 'starting'}" style="margin-left:8px">${t.status}</span>
+            </div>
+            <span style="font-size:12px;color:var(--text2)">${t.progress_pct.toFixed(1)}%</span>
+          </div>
+          <div class="progress"><div class="progress-bar" style="width:${t.progress_pct}%"></div></div>
+          ${t.error ? `<div style="color:var(--red);font-size:12px;margin-top:4px">${t.error}</div>` : ''}
+          ${t.save_path ? `<div style="font-size:11px;color:var(--text2);margin-top:4px">${t.save_path}</div>` : ''}
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function onDlPageSourceChange() {
+  const s = document.getElementById('dl-page-source').value;
+  document.getElementById('dl-page-repo-group').style.display = s === 'url' ? 'none' : '';
+  document.getElementById('dl-page-url-group').style.display = s === 'url' ? '' : 'none';
+}
+
+async function doDlPageDownload() {
+  const body = {
+    source: document.getElementById('dl-page-source').value,
+    repo: document.getElementById('dl-page-repo').value || null,
+    filename: document.getElementById('dl-page-file').value || null,
+    url: document.getElementById('dl-page-url').value || null,
+    save_name: document.getElementById('dl-page-save').value || null,
+  };
+  try {
+    await api('/models/download', { method: 'POST', body: JSON.stringify(body) });
+    toast('Download started');
+    renderDownload();
+  } catch (e) { toast(e.message, false); }
+}
+
+// ---- Instances ----
+async function renderInstances() {
+  const [instList, models, presets] = await Promise.all([
+    api('/instances'), api('/models'), api('/presets')
+  ]);
+  const p = document.getElementById('page-instances');
+  p.innerHTML = `
+    <div class="card-header"><h2>Running Instances (${instList.total})</h2>
+      <button class="btn-primary" onclick="openStartModal()">+ Start New</button>
+    </div>
+    ${instList.instances.length === 0 ? '<div class="card" style="text-align:center;color:var(--text2);padding:40px">No running instances</div>' : ''}
+    ${instList.instances.map(inst => `
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div>
+            <span style="font-weight:600;font-size:14px">${inst.model}</span>
+            <span class="badge badge-${inst.status}" style="margin-left:8px">${inst.status}</span>
+            <span style="color:var(--text2);font-size:12px;margin-left:8px">ID: ${inst.id}</span>
+          </div>
+          <div style="display:flex;gap:6px">
+            <button class="btn-ghost btn-sm" onclick="showLog('${inst.id}')">Logs</button>
+            <button class="btn-ghost btn-sm" onclick="restartInstance('${inst.id}')">Restart</button>
+            <button class="btn-danger btn-sm" onclick="stopInstance('${inst.id}')">Stop</button>
+          </div>
+        </div>
+        <div class="stat-grid" style="grid-template-columns:repeat(5,1fr)">
+          <div class="stat-card"><div class="label">Port</div><div class="value" style="font-size:16px">${inst.port}</div></div>
+          <div class="stat-card"><div class="label">PID</div><div class="value" style="font-size:16px">${inst.pid || '-'}</div></div>
+          <div class="stat-card"><div class="label">Context</div><div class="value" style="font-size:16px">${inst.ctx_size.toLocaleString()}</div></div>
+          <div class="stat-card"><div class="label">RAM Usage</div><div class="value" style="font-size:16px">${inst.ram_usage_mb ? fmtMB(inst.ram_usage_mb) : '-'}</div></div>
+          <div class="stat-card"><div class="label">Started</div><div class="value" style="font-size:14px">${ago(inst.started_at)}</div></div>
+        </div>
+      </div>
+    `).join('')}
+  `;
+
+  // populate start modal
+  const sel = document.getElementById('start-model');
+  sel.innerHTML = models.map(m => `<option value="${m.name}">${m.name} (${fmtMB(m.size_mb)})</option>`).join('');
+  const psel = document.getElementById('start-preset');
+  psel.innerHTML = '<option value="">None</option>' + Object.keys(presets).map(n => `<option value="${n}">${n}</option>`).join('');
+}
+
+function openStartModal() {
+  openModal('modal-start');
+}
+
+async function quickStart(model) {
+  // Switch to instances page and open modal with model pre-selected
+  document.querySelector('[data-page="instances"]').click();
+  setTimeout(() => {
+    const sel = document.getElementById('start-model');
+    if (sel) sel.value = model;
+    openModal('modal-start');
+  }, 300);
+}
+
+async function doStartInstance() {
+  const body = {
+    model: document.getElementById('start-model').value,
+    preset: document.getElementById('start-preset').value || null,
+    ctx_size: parseInt(document.getElementById('start-ctx').value) || null,
+    n_gpu_layers: document.getElementById('start-ngl').value || null,
+    n_parallel: parseInt(document.getElementById('start-np').value) || null,
+    batch_size: parseInt(document.getElementById('start-batch').value) || null,
+    flash_attn: document.getElementById('start-fa').value || null,
+  };
+  const port = document.getElementById('start-port').value;
+  if (port) body.port = parseInt(port);
+
+  try {
+    const inst = await api('/instances', { method: 'POST', body: JSON.stringify(body) });
+    toast('Instance ' + inst.id + ' starting');
+    closeModal('modal-start');
+    renderInstances();
+  } catch (e) { toast(e.message, false); }
+}
+
+async function stopInstance(id) {
+  if (!confirm('Stop instance ' + id + '?')) return;
+  try {
+    await api('/instances/' + id, { method: 'DELETE' });
+    toast('Instance stopped');
+    renderInstances();
+  } catch (e) { toast(e.message, false); }
+}
+
+async function restartInstance(id) {
+  try {
+    await api('/instances/' + id + '/restart', { method: 'POST' });
+    toast('Instance restarted');
+    renderInstances();
+  } catch (e) { toast(e.message, false); }
+}
+
+async function showLog(id) {
+  document.getElementById('log-content').textContent = 'Loading...';
+  openModal('modal-log');
+  try {
+    const data = await api('/instances/' + id + '/logs?lines=200');
+    // The API returns empty logs array, show raw lines
+    document.getElementById('log-content').textContent = data.total_lines > 0
+      ? `Instance: ${id}\nTotal lines: ${data.total_lines}\n(Log viewer: use API directly for raw output)`
+      : 'No logs available yet. Server may still be starting.';
+  } catch (e) { document.getElementById('log-content').textContent = 'Error: ' + e.message; }
+}
+
+// ---- Presets ----
+async function renderPresets() {
+  const presets = await api('/presets');
+  const p = document.getElementById('page-presets');
+  const entries = Object.entries(presets);
+  p.innerHTML = `
+    <div class="card-header"><h2>Presets (${entries.length})</h2>
+      <button class="btn-primary" onclick="addPreset()">+ New Preset</button>
+    </div>
+    ${entries.length === 0 ? '<div class="card" style="text-align:center;color:var(--text2);padding:40px">No presets</div>' : ''}
+    ${entries.map(([name, pr]) => `
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div><span style="font-weight:600">${name}</span> <span style="color:var(--text2);font-size:12px">${pr.description || ''}</span></div>
+          <button class="btn-danger btn-sm" onclick="deletePreset('${name}')">Delete</button>
+        </div>
+        <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--text2)">
+          ${pr.ctx_size ? '<span>ctx: '+pr.ctx_size+'</span>' : ''}
+          ${pr.n_gpu_layers ? '<span>ngl: '+pr.n_gpu_layers+'</span>' : ''}
+          ${pr.n_parallel ? '<span>np: '+pr.n_parallel+'</span>' : ''}
+          ${pr.batch_size ? '<span>batch: '+pr.batch_size+'</span>' : ''}
+          ${pr.extra_args?.length ? '<span>extra: '+pr.extra_args.join(', ')+'</span>' : ''}
+        </div>
+      </div>
+    `).join('')}
+  `;
+}
+
+async function addPreset() {
+  const name = prompt('Preset name:');
+  if (!name) return;
+  const desc = prompt('Description:') || '';
+  try {
+    await api('/presets', { method: 'POST', body: JSON.stringify({ name, description: desc }) });
+    toast('Preset created');
+    renderPresets();
+  } catch (e) { toast(e.message, false); }
+}
+
+async function deletePreset(name) {
+  if (!confirm('Delete preset ' + name + '?')) return;
+  try {
+    await api('/presets/' + name, { method: 'DELETE' });
+    toast('Preset deleted');
+    renderPresets();
+  } catch (e) { toast(e.message, false); }
+}
+
+// ---- Config ----
+async function renderConfig() {
+  const cfg = await api('/system/config');
+  const p = document.getElementById('page-config');
+  p.innerHTML = `
+    <div class="card-header"><h2>Configuration</h2></div>
+    <div class="card">
+      <div class="form-row">
+        <div class="form-group"><label>Model Directory</label><input id="cfg-model-dir" value="${cfg.model_dir}"></div>
+        <div class="form-group"><label>LLaMA Server Binary</label><input id="cfg-llama-bin" value="${cfg.llama_server_bin}"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Port Range Start</label><input id="cfg-port-start" type="number" value="${cfg.port_range_start}"></div>
+        <div class="form-group"><label>Port Range End</label><input id="cfg-port-end" type="number" value="${cfg.port_range_end}"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Default Context Size</label><input id="cfg-ctx" type="number" value="${cfg.default_ctx_size}"></div>
+        <div class="form-group"><label>Default GPU Layers</label><input id="cfg-ngl" value="${cfg.default_n_gpu_layers}"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Default Batch Size</label><input id="cfg-batch" type="number" value="${cfg.default_batch_size}"></div>
+        <div class="form-group"><label>Default Parallel</label><input id="cfg-np" type="number" value="${cfg.default_n_parallel}"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Default Host</label><input id="cfg-host" value="${cfg.default_host}"></div>
+        <div class="form-group"><label>Max Instances</label><input id="cfg-max" type="number" value="${cfg.max_instances}"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Health Check Interval (s)</label><input id="cfg-hc" type="number" value="${cfg.health_check_interval}"></div>
+        <div class="form-group"><label>Auto Restart</label><select id="cfg-restart"><option value="true" ${cfg.auto_restart?'selected':''}>Yes</option><option value="false" ${!cfg.auto_restart?'selected':''}>No</option></select></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Max Restart Retries</label><input id="cfg-retry" type="number" value="${cfg.auto_restart_max_retries}"></div>
+        <div class="form-group"><label>Restart Delay (s)</label><input id="cfg-delay" type="number" value="${cfg.auto_restart_delay}"></div>
+      </div>
+      <div class="form-group"><label>HF Mirror URL</label><input id="cfg-mirror" value="${cfg.hf_mirror_url || ''}"></div>
+      <div style="margin-top:16px"><button class="btn-primary" onclick="saveConfig()">Save Config</button></div>
+    </div>
+  `;
+}
+
+async function saveConfig() {
+  const body = {
+    model_dir: document.getElementById('cfg-model-dir').value,
+    llama_server_bin: document.getElementById('cfg-llama-bin').value,
+    port_range_start: parseInt(document.getElementById('cfg-port-start').value),
+    port_range_end: parseInt(document.getElementById('cfg-port-end').value),
+    default_ctx_size: parseInt(document.getElementById('cfg-ctx').value),
+    default_n_gpu_layers: document.getElementById('cfg-ngl').value,
+    default_batch_size: parseInt(document.getElementById('cfg-batch').value),
+    default_n_parallel: parseInt(document.getElementById('cfg-np').value),
+    default_host: document.getElementById('cfg-host').value,
+    max_instances: parseInt(document.getElementById('cfg-max').value),
+    health_check_interval: parseInt(document.getElementById('cfg-hc').value),
+    auto_restart: document.getElementById('cfg-restart').value === 'true',
+    auto_restart_max_retries: parseInt(document.getElementById('cfg-retry').value),
+    auto_restart_delay: parseInt(document.getElementById('cfg-delay').value),
+    hf_mirror_url: document.getElementById('cfg-mirror').value || null,
+  };
+  try {
+    await api('/system/config', { method: 'PUT', body: JSON.stringify(body) });
+    toast('Config saved');
+  } catch (e) { toast(e.message, false); }
+}
+
+// ---- Init ----
+renderDashboard();
+
+// Auto-refresh every 2s for realtime feel
+setInterval(() => {
+  if (currentPage === 'dashboard') renderDashboard();
+  else if (currentPage === 'instances') renderInstances();
+}, 2000);
+
+// Redraw charts on resize
+window.addEventListener('resize', () => {
+  if (currentPage === 'dashboard') renderDashboard();
+});
+</script>
+</body>
+</html>

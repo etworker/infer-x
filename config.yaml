@@ -1,0 +1,45 @@
+config:
+  model_dir: /home/ec2-user/models
+  llama_server_bin: /home/ec2-user/llama.cpp/build/bin/llama-server
+  port_range_start: 8080
+  port_range_end: 8180
+  default_ctx_size: 4096
+  default_n_gpu_layers: auto
+  default_threads: null
+  default_batch_size: 2048
+  default_n_parallel: 1
+  default_flash_attn: auto
+  default_host: "0.0.0.0"
+  default_sleep_idle_seconds: -1
+  max_instances: 4
+  health_check_interval: 10
+  auto_restart: true
+  auto_restart_max_retries: 3
+  auto_restart_delay: 5
+  hf_mirror_url: https://hf-mirror.com
+  download_max_concurrent: 2
+
+presets:
+  qwen3-8b-chat:
+    description: Qwen3 8B for chat, 8K context
+    ctx_size: 8192
+    n_gpu_layers: auto
+    n_parallel: 2
+    batch_size: 2048
+
+  qwen3-4b-fast:
+    description: Qwen3 4B, low latency
+    ctx_size: 4096
+    n_gpu_layers: all
+    n_parallel: 4
+    batch_size: 1024
+
+  embedding:
+    description: Embedding mode, no sampling
+    ctx_size: 512
+    n_gpu_layers: auto
+    n_parallel: 8
+    extra_args:
+      - --embedding
+      - --pooling
+      - mean
