@@ -798,3 +798,81 @@ async def compare_benchmarks(report_ids: List[str]):
     }
 
     return comparison
+
+
+# ===========================================================================
+# Batch Benchmark
+# ===========================================================================
+
+_benchmark_web = None
+
+
+def _bench_web():
+    global _benchmark_web
+    if _benchmark_web is None:
+        from .benchmark_web import BenchmarkWebManager
+        data_dir = Path(__file__).parent.parent.parent / "data" / "benchmarks"
+        _benchmark_web = BenchmarkWebManager(data_dir)
+    return _benchmark_web
+
+
+class BatchBenchmarkRequest(BaseModel):
+    models: List[str]
+    backends: List[str]
+    scenarios: Optional[List[Dict[str, Any]]] = None
+    num_iterations: int = 3
+    warmup_iterations: int = 1
+    timeout_seconds: int = 120
+
+
+@router.get("/benchmark/batches")
+async def list_benchmark_batches():
+    """List all batch benchmark runs."""
+    return {"batches": _bench_web().list_batches()}
+
+
+@router.get("/benchmark/batches/{batch_id}")
+async def get_batch_progress(batch_id: str):
+    """Get progress of a batch benchmark run."""
+    progress = _bench_web().get_batch_progress(batch_id)
+    if not progress:
+        raise HTTPException(404, f"Batch not found: {batch_id}")
+    return progress.model_dump()
+
+
+@router.post("/benchmark/batches")
+async def start_batch_benchmark(body: BatchBenchmarkRequest):
+    """Start a batch benchmark run."""
+    from .benchmark_web import BatchBenchmarkConfig
+
+    config = BatchBenchmarkConfig(
+        models=body.models,
+        backends=body.backends,
+        num_iterations=body.num_iterations,
+        warmup_iterations=body.warmup_iterations,
+        timeout_seconds=body.timeout_seconds,
+    )
+
+    if body.scenarios:
+        config.scenarios = body.scenarios
+
+    batch_id = await _bench_web().start_batch(config)
+    return {"batch_id": batch_id, "status": "started"}
+
+
+@router.post("/benchmark/batches/{batch_id}/cancel")
+async def cancel_batch_benchmark(batch_id: str):
+    """Cancel a batch benchmark run."""
+    ok = _bench_web().cancel_batch(batch_id)
+    if not ok:
+        raise HTTPException(404, f"Batch not found: {batch_id}")
+    return {"success": True}
+
+
+@router.delete("/benchmark/batches/{batch_id}")
+async def delete_batch_benchmark(batch_id: str):
+    """Delete a batch benchmark record."""
+    ok = _bench_web().delete_batch(batch_id)
+    if not ok:
+        raise HTTPException(404, f"Batch not found: {batch_id}")
+    return {"success": True}

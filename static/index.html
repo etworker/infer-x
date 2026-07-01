@@ -125,6 +125,10 @@ tr:hover td{background:var(--surface2)}
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4m0 14v4M4.22 4.22l2.83 2.83m9.9 9.9l2.83 2.83M1 12h4m14 0h4M4.22 19.78l2.83-2.83m9.9-9.9l2.83-2.83"/></svg>
       <span>Presets</span>
     </div>
+    <div class="nav-item" data-page="benchmark">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+      <span>Benchmark</span>
+    </div>
     <div class="nav-item" data-page="config">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
       <span>Config</span>
@@ -140,6 +144,7 @@ tr:hover td{background:var(--surface2)}
   <div class="main" id="page-download" style="display:none"></div>
   <div class="main" id="page-instances" style="display:none"></div>
   <div class="main" id="page-presets" style="display:none"></div>
+  <div class="main" id="page-benchmark" style="display:none"></div>
   <div class="main" id="page-config" style="display:none"></div>
 </div>
 
@@ -1142,6 +1147,214 @@ async function saveConfig() {
   try {
     await api('/system/config', { method: 'PUT', body: JSON.stringify(body) });
     toast('Config saved');
+  } catch (e) { toast(e.message, false); }
+}
+
+// ---- Benchmark ----
+let benchmarkPollTimer = null;
+
+async function renderBenchmark() {
+  const p = document.getElementById('page-benchmark');
+  const [batches, reports, models, backendsData] = await Promise.all([
+    api('/benchmark/batches'),
+    api('/benchmark/reports'),
+    api('/models'),
+    api('/system/backends')
+  ]);
+
+  const backends = backendsData.backends || [];
+  const installedBackends = backends.filter(b => b.installed);
+
+  p.innerHTML = `
+    <div class="card-header"><h2>Benchmark</h2></div>
+    
+    <!-- New Benchmark Form -->
+    <div class="card">
+      <h3 style="margin-bottom:16px">Run New Benchmark</h3>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Models (Ctrl+Click for multi-select)</label>
+          <select id="bench-models" multiple size="5" style="height:auto">
+            ${models.map(m => `<option value="${m.name}">${m.name} (${fmtMB(m.size_mb)})</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Backends (Ctrl+Click for multi-select)</label>
+          <select id="bench-backends" multiple size="5" style="height:auto">
+            ${installedBackends.map(b => `<option value="${b.id}">${b.name}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Iterations</label>
+          <input id="bench-iterations" type="number" value="3" min="1" max="10">
+        </div>
+        <div class="form-group">
+          <label>Warmup</label>
+          <input id="bench-warmup" type="number" value="1" min="0" max="5">
+        </div>
+        <div class="form-group">
+          <label>Timeout (s)</label>
+          <input id="bench-timeout" type="number" value="120" min="30" max="600">
+        </div>
+      </div>
+      <div style="margin-top:12px">
+        <button class="btn-primary" onclick="startBenchmark()">Start Benchmark</button>
+      </div>
+    </div>
+
+    <!-- Active Batches -->
+    <div class="card" id="bench-active-card" style="display:none">
+      <h3 style="margin-bottom:16px">Active Benchmarks</h3>
+      <div id="bench-active-body"></div>
+    </div>
+
+    <!-- History -->
+    <div class="card">
+      <h3 style="margin-bottom:16px">Benchmark History</h3>
+      <div id="bench-history-body">
+        ${reports.reports.length === 0 ? '<div style="text-align:center;color:var(--text2);padding:24px">No benchmark reports</div>' : ''}
+        ${reports.reports.map(r => `
+          <div style="padding:12px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+            <div>
+              <span style="font-weight:500">${r.model || 'Unknown'}</span>
+              <span class="badge badge-running" style="margin-left:8px">${r.backend || 'N/A'}</span>
+              <span style="color:var(--text2);font-size:12px;margin-left:8px">${r.timestamp ? new Date(r.timestamp).toLocaleString() : ''}</span>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <span style="font-size:12px;color:var(--text2)">${r.avg_tokens_per_second ? r.avg_tokens_per_second.toFixed(1) + ' tok/s' : 'N/A'}</span>
+              <button class="btn-ghost btn-sm" onclick="viewReport('${r.id}')">View</button>
+              <button class="btn-danger btn-sm" onclick="deleteReport('${r.id}')">Delete</button>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+
+  // Start polling for active batches
+  startBenchmarkPolling();
+}
+
+function startBenchmarkPolling() {
+  if (benchmarkPollTimer) clearInterval(benchmarkPollTimer);
+  benchmarkPollTimer = setInterval(async () => {
+    if (currentPage !== 'benchmark') {
+      clearInterval(benchmarkPollTimer);
+      return;
+    }
+    try {
+      const batches = await api('/benchmark/batches');
+      const activeCard = document.getElementById('bench-active-card');
+      const activeBody = document.getElementById('bench-active-body');
+      
+      if (!activeCard || !activeBody) return;
+      
+      const activeBatches = (batches.batches || []).filter(b => b.status === 'running' || b.status === 'pending');
+      
+      if (activeBatches.length > 0) {
+        activeCard.style.display = '';
+        activeBody.innerHTML = activeBatches.map(b => {
+          const progress = b.total_tasks > 0 ? Math.round(b.completed_tasks / b.total_tasks * 100) : 0;
+          return `
+            <div style="padding:12px 0;border-bottom:1px solid var(--border)">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                <span style="font-weight:500">${b.batch_id}</span>
+                <span class="badge badge-${b.status === 'running' ? 'running' : 'starting'}">${b.status}</span>
+              </div>
+              <div style="font-size:12px;color:var(--text2);margin-bottom:8px">
+                Models: ${(b.models || []).join(', ')} | Backends: ${(b.backends || []).join(', ')}
+              </div>
+              <div class="progress">
+                <div class="progress-bar" style="width:${progress}%"></div>
+              </div>
+              <div style="font-size:11px;color:var(--text2);margin-top:4px">${b.completed_tasks}/${b.total_tasks} tasks (${progress}%)</div>
+            </div>
+          `;
+        }).join('');
+      } else {
+        activeCard.style.display = 'none';
+      }
+    } catch (e) {}
+  }, 2000);
+}
+
+async function startBenchmark() {
+  const models = Array.from(document.getElementById('bench-models').selectedOptions).map(o => o.value);
+  const backends = Array.from(document.getElementById('bench-backends').selectedOptions).map(o => o.value);
+  
+  if (models.length === 0 || backends.length === 0) {
+    toast('Please select at least one model and one backend', false);
+    return;
+  }
+
+  const body = {
+    models,
+    backends,
+    num_iterations: parseInt(document.getElementById('bench-iterations').value) || 3,
+    warmup_iterations: parseInt(document.getElementById('bench-warmup').value) || 1,
+    timeout_seconds: parseInt(document.getElementById('bench-timeout').value) || 120,
+  };
+
+  try {
+    const result = await api('/benchmark/batches', { method: 'POST', body: JSON.stringify(body) });
+    toast('Benchmark started: ' + result.batch_id);
+    renderBenchmark();
+  } catch (e) { toast(e.message, false); }
+}
+
+async function viewReport(reportId) {
+  try {
+    const report = await api('/benchmark/reports/' + reportId);
+    const p = document.getElementById('page-benchmark');
+    p.innerHTML = `
+      <div class="card-header">
+        <h2>Benchmark Report: ${report.id}</h2>
+        <button class="btn-ghost" onclick="renderBenchmark()">Back</button>
+      </div>
+      <div class="card">
+        <div class="form-row">
+          <div class="stat-card"><div class="label">Backend</div><div class="value" style="font-size:16px">${report.config?.backend || 'N/A'}</div></div>
+          <div class="stat-card"><div class="label">Model</div><div class="value" style="font-size:16px">${report.config?.model || 'N/A'}</div></div>
+        </div>
+        <div class="form-row" style="margin-top:12px">
+          <div class="stat-card"><div class="label">Avg Tokens/sec</div><div class="value" style="font-size:16px;color:var(--green)">${report.avg_tokens_per_second?.toFixed(1) || 'N/A'}</div></div>
+          <div class="stat-card"><div class="label">Avg TTFT</div><div class="value" style="font-size:16px">${report.avg_time_to_first_token_ms?.toFixed(0) || 'N/A'} ms</div></div>
+          <div class="stat-card"><div class="label">Avg Load Time</div><div class="value" style="font-size:16px">${report.avg_load_time_ms?.toFixed(0) || 'N/A'} ms</div></div>
+          <div class="stat-card"><div class="label">Max GPU Memory</div><div class="value" style="font-size:16px">${report.max_gpu_memory_used_mb ? fmtMB(report.max_gpu_memory_used_mb) : 'N/A'}</div></div>
+        </div>
+      </div>
+      <div class="card">
+        <h3 style="margin-bottom:12px">Scenario Results</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Scenario</th><th>Prompt Tokens</th><th>Completion Tokens</th><th>Total Time</th><th>Tokens/sec</th><th>TTFT</th></tr></thead>
+            <tbody>
+              ${(report.results || []).map(r => `
+                <tr>
+                  <td style="font-weight:500">${r.scenario}</td>
+                  <td>${r.prompt_tokens || 0}</td>
+                  <td>${r.completion_tokens || 0}</td>
+                  <td>${r.total_time_ms?.toFixed(0) || 0} ms</td>
+                  <td style="color:var(--green)">${r.tokens_per_second?.toFixed(1) || 0}</td>
+                  <td>${r.time_to_first_token_ms?.toFixed(0) || 0} ms</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  } catch (e) { toast(e.message, false); }
+}
+
+async function deleteReport(reportId) {
+  if (!confirm('Delete this report?')) return;
+  try {
+    await api('/benchmark/reports/' + reportId, { method: 'DELETE' });
+    toast('Report deleted');
+    renderBenchmark();
   } catch (e) { toast(e.message, false); }
 }
 
