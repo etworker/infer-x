@@ -94,14 +94,18 @@ class InstanceManager:
             backend = get_backend(backend_type.value)
             models = backend.get_model_paths(model_dir)
         else:
-            # Discover models for all backends
+            # Discover models for all backends, deduplicate by path
+            seen_paths = set()
             for bt in BackendType:
                 try:
                     backend = get_backend(bt.value)
                     backend_models = backend.get_model_paths(model_dir)
                     for m in backend_models:
-                        m["backend"] = bt.value
-                    models.extend(backend_models)
+                        model_path = m.get("path", "")
+                        if model_path not in seen_paths:
+                            seen_paths.add(model_path)
+                            m["backend"] = bt.value
+                            models.append(m)
                 except Exception:
                     continue
 

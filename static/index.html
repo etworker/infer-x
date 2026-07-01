@@ -472,6 +472,7 @@ async function refreshPage() {
     else if (currentPage === 'download') await renderDownload();
     else if (currentPage === 'instances') await renderInstances();
     else if (currentPage === 'presets') await renderPresets();
+    else if (currentPage === 'benchmark') await renderBenchmark();
     else if (currentPage === 'config') await renderConfig();
   } catch (e) { console.error(e); }
 }
