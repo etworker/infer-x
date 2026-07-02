@@ -31,7 +31,6 @@ class SGLangBackend(Backend):
             "--model-path", str(model_path),
             "--host", host,
             "--port", str(port),
-            "--log-file", str(log_file),
         ])
 
         if params.get("tp") and params["tp"] > 1:
