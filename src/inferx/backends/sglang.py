@@ -37,26 +37,10 @@ class SGLangBackend(Backend):
             cmd.extend(["--tp", str(params["tp"])])
         if params.get("mem_fraction_static") and params["mem_fraction_static"] < 1.0:
             cmd.extend(["--mem-fraction-static", str(params["mem_fraction_static"])])
-        if params.get("max_num_reqs"):
-            cmd.extend(["--max-num-reqs", str(params["max_num_reqs"])])
         if params.get("chat_template"):
             cmd.extend(["--chat-template", params["chat_template"]])
         if params.get("nnodes") and params["nnodes"] > 1:
             cmd.extend(["--nnodes", str(params["nnodes"])])
-        if params.get("nccl_nvls"):
-            cmd.append("--nccl-nvls")
-        if params.get("chunked_prefill_size"):
-            cmd.extend(["--chunked-prefill-size", str(params["chunked_prefill_size"])])
-        if params.get("mem_cache_size"):
-            cmd.extend(["--mem-cache-size", str(params["mem_cache_size"])])
-        if params.get("token_logprob_threshold") is not None:
-            cmd.extend(["--token-logprob-threshold", str(params["token_logprob_threshold"])])
-        if params.get("schedule_policy"):
-            cmd.extend(["--schedule-policy", params["schedule_policy"]])
-        if params.get("schedule_conservativeness") and params["schedule_conservativeness"] != 1.0:
-            cmd.extend(["--schedule-conservativeness", str(params["schedule_conservativeness"])])
-        if params.get("server_worker_path"):
-            cmd.extend(["--server-worker-path", params["server_worker_path"]])
 
         cmd.extend(extra_args)
         return cmd
