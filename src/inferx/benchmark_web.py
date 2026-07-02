@@ -104,7 +104,7 @@ class BenchmarkWebManager:
 
     async def start_batch(self, config: BatchBenchmarkConfig) -> str:
         """Start a batch benchmark run."""
-        batch_id = f"batch-{uuid.uuid4().hex[:8]}"
+        batch_id = uuid.uuid4().hex[:8]
 
         # Generate all combinations (Cartesian product)
         tasks = []

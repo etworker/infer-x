@@ -1156,9 +1156,12 @@ let benchmarkPollTimer = null;
 
 async function renderBenchmark() {
   const p = document.getElementById('page-benchmark');
-  const [batches, reports, models, backendsData] = await Promise.all([
-    api('/benchmark/batches'),
-    api('/benchmark/reports'),
+  
+  // Show loading state
+  p.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text2)">Loading...</div>';
+
+  // Load form data first (fast)
+  const [models, backendsData] = await Promise.all([
     api('/models'),
     api('/system/backends')
   ]);
@@ -1166,6 +1169,7 @@ async function renderBenchmark() {
   const backends = backendsData.backends || [];
   const installedBackends = backends.filter(b => b.installed);
 
+  // Render form immediately
   p.innerHTML = `
     <div class="card-header"><h2>Benchmark</h2></div>
     
@@ -1212,36 +1216,65 @@ async function renderBenchmark() {
     </div>
 
     <!-- Batch History -->
-    <div class="card">
+    <div class="card" id="bench-batches-card">
       <h3 style="margin-bottom:16px">Batch History</h3>
-      <div id="bench-batches-body">
-        ${(batches.batches || []).length === 0 ? '<div style="text-align:center;color:var(--text2);padding:24px">No batch runs</div>' : ''}
-        ${(batches.batches || []).map(b => {
-          const progress = b.total_tasks > 0 ? Math.round(b.completed_tasks / b.total_tasks * 100) : 0;
-          return `
-          <div style="padding:12px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
-            <div>
-              <span style="font-weight:500">${b.batch_id}</span>
-              <span class="badge badge-${b.status === 'completed' ? 'running' : b.status === 'failed' ? 'error' : 'starting'}" style="margin-left:8px">${b.status}</span>
-              <span style="color:var(--text2);font-size:12px;margin-left:8px">${b.completed_tasks || 0}/${b.total_tasks || 0} (${progress}%)</span>
-            </div>
-            <div style="display:flex;gap:8px;align-items:center">
-              <span style="font-size:12px;color:var(--text2)">${b.started_at ? new Date(b.started_at).toLocaleString() : ''}</span>
-              ${b.status === 'running' || b.status === 'pending' ? `<button class="btn-danger btn-sm" onclick="cancelBatch('${b.batch_id}')">Stop</button>` : ''}
-              <button class="btn-ghost btn-sm" onclick="rerunBatch('${b.batch_id}')">Rerun</button>
-              <button class="btn-danger btn-sm" onclick="deleteBatch('${b.batch_id}')">Delete</button>
-            </div>
-          </div>
-        `}).join('')}
-      </div>
+      <div id="bench-batches-body" style="text-align:center;color:var(--text2);padding:12px">Loading...</div>
     </div>
 
     <!-- Report History -->
-    <div class="card">
+    <div class="card" id="bench-reports-card">
       <h3 style="margin-bottom:16px">Reports</h3>
-      <div id="bench-history-body">
-        ${reports.reports.length === 0 ? '<div style="text-align:center;color:var(--text2);padding:24px">No benchmark reports</div>' : ''}
-        ${reports.reports.map(r => `
+      <div id="bench-history-body" style="text-align:center;color:var(--text2);padding:12px">Loading...</div>
+    </div>
+  `;
+
+  // Load batches and reports asynchronously
+  loadBenchmarkData();
+}
+
+async function loadBenchmarkData() {
+  try {
+    const [batches, reports] = await Promise.all([
+      api('/benchmark/batches'),
+      api('/benchmark/reports')
+    ]);
+
+    // Render batch history
+    const batchesBody = document.getElementById('bench-batches-body');
+    if (batchesBody) {
+      const batchList = batches.batches || [];
+      if (batchList.length === 0) {
+        batchesBody.innerHTML = '<div style="text-align:center;color:var(--text2);padding:24px">No batch runs</div>';
+      } else {
+        batchesBody.innerHTML = batchList.map(b => {
+          const progress = b.total_tasks > 0 ? Math.round(b.completed_tasks / b.total_tasks * 100) : 0;
+          return `
+            <div style="padding:12px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+              <div>
+                <span style="font-weight:500">${b.batch_id}</span>
+                <span class="badge badge-${b.status === 'completed' ? 'running' : b.status === 'failed' ? 'error' : 'starting'}" style="margin-left:8px">${b.status}</span>
+                <span style="color:var(--text2);font-size:12px;margin-left:8px">${b.completed_tasks || 0}/${b.total_tasks || 0} (${progress}%)</span>
+              </div>
+              <div style="display:flex;gap:8px;align-items:center">
+                <span style="font-size:12px;color:var(--text2)">${b.started_at ? new Date(b.started_at).toLocaleString() : ''}</span>
+                ${b.status === 'running' || b.status === 'pending' ? `<button class="btn-danger btn-sm" onclick="cancelBatch('${b.batch_id}')">Stop</button>` : ''}
+                <button class="btn-ghost btn-sm" onclick="rerunBatch('${b.batch_id}')">Rerun</button>
+                <button class="btn-danger btn-sm" onclick="deleteBatch('${b.batch_id}')">Delete</button>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+    }
+
+    // Render reports (limit to 20 most recent)
+    const reportsBody = document.getElementById('bench-history-body');
+    if (reportsBody) {
+      const reportList = (reports.reports || []).slice(0, 20);
+      if (reportList.length === 0) {
+        reportsBody.innerHTML = '<div style="text-align:center;color:var(--text2);padding:24px">No benchmark reports</div>';
+      } else {
+        reportsBody.innerHTML = reportList.map(r => `
           <div style="padding:12px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
             <div>
               <span style="font-weight:500">${r.model || 'Unknown'}</span>
@@ -1254,13 +1287,15 @@ async function renderBenchmark() {
               <button class="btn-danger btn-sm" onclick="deleteReport('${r.id}')">Delete</button>
             </div>
           </div>
-        `).join('')}
-      </div>
-    </div>
-  `;
-
-  // Start polling for active batches
-  startBenchmarkPolling();
+        `).join('');
+        if (reports.reports.length > 20) {
+          reportsBody.innerHTML += `<div style="text-align:center;color:var(--text2);padding:12px;font-size:12px">Showing 20 of ${reports.reports.length} reports</div>`;
+        }
+      }
+    }
+  } catch (e) {
+    console.error('Failed to load benchmark data:', e);
+  }
 }
 
 function startBenchmarkPolling() {
