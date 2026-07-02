@@ -1154,68 +1154,187 @@ async function saveConfig() {
 
 // ---- Benchmark ----
 let benchmarkPollTimer = null;
+let benchModelsData = [];
+let benchBackendsData = [];
 
 async function renderBenchmark() {
   const p = document.getElementById('page-benchmark');
-  p.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text2)">Loading...</div>';
+  p.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text2)">加载中...</div>';
 
+  // Load data
   const [models, backendsData] = await Promise.all([
     api('/models'),
     api('/system/backends')
   ]);
 
-  const backends = (backendsData.backends || []).filter(b => b.installed);
+  benchModelsData = models;
+  benchBackendsData = (backendsData.backends || []).filter(b => b.installed);
+
+  // Render form
+  document.getElementById('bench-models-tbody').innerHTML = models.map((m, i) => `
+    <tr>
+      <td><input type="checkbox" class="bench-model-cb" data-idx="${i}"></td>
+      <td>${m.name}</td>
+      <td><span class="badge badge-${m.name.endsWith('.gguf') ? 'running' : 'starting'}">${m.name.endsWith('.gguf') ? 'GGUF' : 'HF'}</span></td>
+      <td>${fmtMB(m.size_mb)}</td>
+    </tr>
+  `).join('');
+
+  document.getElementById('bench-backends-tbody').innerHTML = benchBackendsData.map((b, i) => `
+    <tr>
+      <td><input type="checkbox" class="bench-backend-cb" data-idx="${i}"></td>
+      <td>${b.name}</td>
+      <td>${b.id}</td>
+    </tr>
+  `).join('');
 
   p.innerHTML = `
     <div class="card-header"><h2>Benchmark</h2></div>
     
     <div class="card">
-      <h3 style="margin-bottom:16px">Run Benchmark</h3>
-      <div class="form-row">
-        <div class="form-group">
-          <label>Models (Ctrl+Click multi-select)</label>
-          <select id="bench-models" multiple size="6" style="height:auto">
-            ${models.map(m => `<option value="${m.name}">${m.name} (${fmtMB(m.size_mb)})</option>`).join('')}
-          </select>
-        </div>
-        <div class="form-group">
-          <label>Backends (Ctrl+Click multi-select)</label>
-          <select id="bench-backends" multiple size="6" style="height:auto">
-            ${backends.map(b => `<option value="${b.id}">${b.name}</option>`).join('')}
-          </select>
-        </div>
+      <h3 style="margin-bottom:12px">选择模型</h3>
+      <div style="margin-bottom:8px">
+        <button class="btn-ghost btn-sm" onclick="benchSelectAllModels(true)">全选</button>
+        <button class="btn-ghost btn-sm" onclick="benchSelectAllModels(false)">全不选</button>
+        <span style="font-size:12px;color:var(--text2);margin-left:8px">已选: <span id="bench-model-count">0</span> 个</span>
       </div>
+      <div class="table-wrap" style="max-height:200px;overflow-y:auto">
+        <table>
+          <thead><tr><th style="width:30px"><input type="checkbox" id="bench-model-all" onchange="benchSelectAllModels(this.checked)"></th><th onclick="benchSortModels('name')" style="cursor:pointer">模型名称 ↕</th><th onclick="benchSortModels('type')" style="cursor:pointer">类型 ↕</th><th onclick="benchSortModels('size')" style="cursor:pointer">大小 ↕</th></tr></thead>
+          <tbody id="bench-models-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-bottom:12px">选择引擎</h3>
+      <div style="margin-bottom:8px">
+        <button class="btn-ghost btn-sm" onclick="benchSelectAllBackends(true)">全选</button>
+        <button class="btn-ghost btn-sm" onclick="benchSelectAllBackends(false)">全不选</button>
+        <span style="font-size:12px;color:var(--text2);margin-left:8px">已选: <span id="bench-backend-count">0</span> 个</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th style="width:30px"><input type="checkbox" id="bench-backend-all" onchange="benchSelectAllBackends(this.checked)"></th><th>引擎名称</th><th>引擎ID</th></tr></thead>
+          <tbody id="bench-backends-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
       <div class="form-row">
         <div class="form-group">
-          <label>Iterations</label>
+          <label>测试轮数</label>
           <input id="bench-iterations" type="number" value="3" min="1" max="10">
         </div>
         <div class="form-group">
-          <label>Timeout (s)</label>
+          <label>超时时间 (秒)</label>
           <input id="bench-timeout" type="number" value="120" min="30" max="600">
         </div>
       </div>
-      <button class="btn-primary" onclick="startBenchmark()">Start Benchmark</button>
+      <button class="btn-primary" onclick="startBenchmark()">开始测试</button>
     </div>
 
     <div class="card" id="bench-active-card" style="display:none">
-      <h3 style="margin-bottom:16px">Running</h3>
+      <h3 style="margin-bottom:12px">运行中</h3>
       <div id="bench-active-body"></div>
     </div>
 
     <div class="card">
-      <h3 style="margin-bottom:16px">Batch History</h3>
-      <div id="bench-batches-body"><div style="text-align:center;color:var(--text2);padding:12px">Loading...</div></div>
+      <h3 style="margin-bottom:12px">批次历史</h3>
+      <div id="bench-batches-body"><div style="text-align:center;color:var(--text2);padding:12px">加载中...</div></div>
     </div>
 
     <div class="card">
-      <h3 style="margin-bottom:16px">Reports</h3>
-      <div id="bench-reports-body"><div style="text-align:center;color:var(--text2);padding:12px">Loading...</div></div>
+      <h3 style="margin-bottom:12px">测试报告</h3>
+      <div id="bench-reports-body"><div style="text-align:center;color:var(--text2);padding:12px">加载中...</div></div>
     </div>
   `;
 
+  // Bind checkbox events
+  document.querySelectorAll('.bench-model-cb').forEach(cb => {
+    cb.addEventListener('change', updateModelCount);
+  });
+  document.querySelectorAll('.bench-backend-cb').forEach(cb => {
+    cb.addEventListener('change', updateBackendCount);
+  });
+
   loadBenchmarkData();
   startBenchmarkPolling();
+}
+
+function benchSelectAllModels(select) {
+  document.querySelectorAll('.bench-model-cb').forEach(cb => cb.checked = select);
+  updateModelCount();
+}
+
+function benchSelectAllBackends(select) {
+  document.querySelectorAll('.bench-backend-cb').forEach(cb => cb.checked = select);
+  updateBackendCount();
+}
+
+function updateModelCount() {
+  const count = document.querySelectorAll('.bench-model-cb:checked').length;
+  document.getElementById('bench-model-count').textContent = count;
+  document.getElementById('bench-model-all').checked = count === document.querySelectorAll('.bench-model-cb').length;
+}
+
+function updateBackendCount() {
+  const count = document.querySelectorAll('.bench-backend-cb:checked').length;
+  document.getElementById('bench-backend-count').textContent = count;
+  document.getElementById('bench-backend-all').checked = count === document.querySelectorAll('.bench-backend-cb').length;
+}
+
+let benchModelSort = { key: 'name', asc: true };
+function benchSortModels(key) {
+  if (benchModelSort.key === key) benchModelSort.asc = !benchModelSort.asc;
+  else { benchModelSort.key = key; benchModelSort.asc = true; }
+  
+  const sorted = [...benchModelsData].sort((a, b) => {
+    let va = key === 'name' ? a.name : key === 'type' ? (a.name.endsWith('.gguf') ? 'gguf' : 'hf') : a.size_mb;
+    let vb = key === 'name' ? b.name : key === 'type' ? (b.name.endsWith('.gguf') ? 'gguf' : 'hf') : b.size_mb;
+    if (typeof va === 'string') return benchModelSort.asc ? va.localeCompare(vb) : vb.localeCompare(va);
+    return benchModelSort.asc ? va - vb : vb - va;
+  });
+
+  const checked = new Set(Array.from(document.querySelectorAll('.bench-model-cb:checked')).map(cb => parseInt(cb.dataset.idx)));
+  document.getElementById('bench-models-tbody').innerHTML = sorted.map((m, i) => {
+    const origIdx = benchModelsData.indexOf(m);
+    return `
+    <tr>
+      <td><input type="checkbox" class="bench-model-cb" data-idx="${origIdx}" ${checked.has(origIdx) ? 'checked' : ''}></td>
+      <td>${m.name}</td>
+      <td><span class="badge badge-${m.name.endsWith('.gguf') ? 'running' : 'starting'}">${m.name.endsWith('.gguf') ? 'GGUF' : 'HF'}</span></td>
+      <td>${fmtMB(m.size_mb)}</td>
+    </tr>`;
+  }).join('');
+  
+  document.querySelectorAll('.bench-model-cb').forEach(cb => {
+    cb.addEventListener('change', updateModelCount);
+  });
+}
+
+async function startBenchmark() {
+  const models = Array.from(document.querySelectorAll('.bench-model-cb:checked')).map(cb => benchModelsData[parseInt(cb.dataset.idx)].name);
+  const backends = Array.from(document.querySelectorAll('.bench-backend-cb:checked')).map(cb => benchBackendsData[parseInt(cb.dataset.idx)].id);
+  
+  if (models.length === 0 || backends.length === 0) {
+    toast('请至少选择一个模型和一个引擎', false);
+    return;
+  }
+
+  const body = {
+    models,
+    backends,
+    num_iterations: parseInt(document.getElementById('bench-iterations').value) || 3,
+    timeout_seconds: parseInt(document.getElementById('bench-timeout').value) || 120,
+  };
+
+  try {
+    const result = await api('/benchmark/batches', { method: 'POST', body: JSON.stringify(body) });
+    toast('测试已启动: ' + result.batch_id);
+    loadBenchmarkData();
+  } catch (e) { toast(e.message, false); }
 }
 
 async function loadBenchmarkData() {
