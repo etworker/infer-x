@@ -1322,7 +1322,6 @@ async function startBenchmark() {
     models,
     backends,
     num_iterations: parseInt(document.getElementById('bench-iterations').value) || 3,
-    warmup_iterations: parseInt(document.getElementById('bench-warmup').value) || 1,
     timeout_seconds: parseInt(document.getElementById('bench-timeout').value) || 120,
   };
 
