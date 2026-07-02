@@ -111,3 +111,9 @@ MIT License - 详见 [LICENSE](LICENSE)
 | llama.cpp | ✅ | ✅ | ✅ |
 | vLLM | ✅ | ✅ | ✅ |
 | SGLang | ❌ | ✅ | ✅ |
+
+## Known Limitations
+
+- **SGLang**: Requires SM 8.0+ GPU (A100, H100). Tesla T4 (SM 7.5) is not supported due to missing sgl_kernel prebuilt libraries.
+- **vLLM**: Works well on Tesla T4 with all features.
+- **llama.cpp**: Works on all GPU architectures.
