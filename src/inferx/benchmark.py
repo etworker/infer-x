@@ -365,7 +365,9 @@ class BenchmarkManager:
                 report.max_gpu_memory_mb = max(r["gpu_memory_used_mb"] for r in successful)
                 report.total_time_seconds = sum(r["total_time_ms"] for r in successful) / 1000
 
-            report.success = True
+            report.success = len(successful) > 0
+            if not report.success and report.scenario_results:
+                report.error = report.scenario_results[0].get("error", "All scenarios failed")
 
         except Exception as e:
             report.success = False
