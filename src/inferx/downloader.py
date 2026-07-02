@@ -159,12 +159,12 @@ class ModelDownloader:
 
     # ---- Auto-download safetensor for gguf models --------------------------
 
-    async def auto_download_safetensors(self, gguf_models: list, source: str = "hf") -> list:
+    async def auto_download_safetensors(self, gguf_models: list, source: str = "auto") -> list:
         """Auto-download safetensor versions for gguf models.
         
         Args:
             gguf_models: List of gguf model filenames
-            source: "hf" for HuggingFace, "ms" for ModelScope
+            source: "hf" for HuggingFace, "ms" for ModelScope, "auto" for try both
         """
         results = []
         
@@ -187,50 +187,66 @@ class ModelDownloader:
             "mistral": "mistralai/Mistral-{size}",
         }
         
-        model_map = ms_model_map if source == "ms" else hf_model_map
-        
         for gguf_name in gguf_models:
             if not gguf_name.endswith(".gguf"):
                 continue
                 
             name_lower = gguf_name.lower()
-            repo = None
+            hf_repo = None
+            ms_repo = None
             
-            for family, repo_template in model_map.items():
+            for family in hf_model_map:
                 if family in name_lower:
                     import re
                     size_match = re.search(r'(\d+\.?\d*[bB])', gguf_name)
                     if size_match:
                         size = size_match.group(1).replace('B', 'b').replace('b', 'B')
-                        repo = repo_template.replace("{size}", size)
+                        hf_repo = hf_model_map[family].replace("{size}", size)
+                        ms_repo = ms_model_map[family].replace("{size}", size)
                     break
             
-            if not repo:
+            if not hf_repo:
                 clean_name = re.sub(r'-Q[0-9]+_[A-Z0-9]+\.gguf$', '', gguf_name, flags=re.IGNORECASE)
                 clean_name = re.sub(r'-q[0-9]+_[a-z0-9]+\.gguf$', '', clean_name, flags=re.IGNORECASE)
                 if "qwen" in clean_name.lower():
-                    repo = f"Qwen/{clean_name}"
+                    hf_repo = f"Qwen/{clean_name}"
+                    ms_repo = f"Qwen/{clean_name}"
                 elif "gemma" in clean_name.lower():
-                    repo = f"AI-ModelScope/{clean_name}" if source == "ms" else f"google/{clean_name}"
+                    hf_repo = f"google/{clean_name}"
+                    ms_repo = f"AI-ModelScope/{clean_name}"
             
-            if not repo:
+            if not hf_repo:
                 results.append({"gguf": gguf_name, "status": "skipped", "reason": "cannot determine repo"})
                 continue
             
-            repo_name = repo.split("/")[-1]
+            repo_name = hf_repo.split("/")[-1]
             target_dir = self._model_dir / repo_name
             if target_dir.exists() and any(target_dir.glob("*.safetensors")):
-                results.append({"gguf": gguf_name, "repo": repo, "status": "exists", "path": str(target_dir)})
+                results.append({"gguf": gguf_name, "repo": hf_repo, "status": "exists", "path": str(target_dir)})
                 continue
             
-            try:
-                if source == "ms":
-                    result = await self._download_modelscope_auto(repo, repo_name)
-                else:
-                    result = await self._download_hf_auto(repo, repo_name)
-                results.append({"gguf": gguf_name, "repo": repo, "status": "downloaded", "path": result})
-            except Exception as e:
-                results.append({"gguf": gguf_name, "repo": repo, "status": "error", "error": str(e)})
+            # Try download with fallback
+            downloaded = False
+            
+            # Try HuggingFace first (faster)
+            if source in ("hf", "auto"):
+                try:
+                    result = await self._download_hf_auto(hf_repo, repo_name)
+                    results.append({"gguf": gguf_name, "repo": hf_repo, "status": "downloaded", "path": result, "source": "hf"})
+                    downloaded = True
+                except Exception as e:
+                    if source == "hf":
+                        results.append({"gguf": gguf_name, "repo": hf_repo, "status": "error", "error": str(e)})
+                        downloaded = True
+            
+            # Fallback to ModelScope if HF failed
+            if not downloaded and source in ("ms", "auto"):
+                try:
+                    result = await self._download_modelscope_auto(ms_repo, repo_name)
+                    results.append({"gguf": gguf_name, "repo": ms_repo, "status": "downloaded", "path": result, "source": "ms"})
+                    downloaded = True
+                except Exception as e:
+                    results.append({"gguf": gguf_name, "repo": ms_repo, "status": "error", "error": str(e)})
         
         return results
 
