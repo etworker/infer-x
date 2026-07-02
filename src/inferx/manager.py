@@ -392,6 +392,7 @@ class InstanceManager:
             proc = subprocess.Popen(
                 cmd,
                 env=env,
+                stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
                 stderr=open(stderr_file, "w"),
                 start_new_session=True,
@@ -437,27 +438,37 @@ class InstanceManager:
         cfg = self._config.config
         url = f"http://{inst.info.host}:{inst.info.port}"
 
+        logger.warning("[DEBUG-MONITOR] _wait_and_monitor started for %s (pid=%s)", inst_id, inst.info.pid)
+
         # wait for server to be ready
-        for _ in range(60):
+        for i in range(60):
             await asyncio.sleep(1)
-            if not self._monitor.is_process_alive(inst.info.pid):
+            alive = self._monitor.is_process_alive(inst.info.pid)
+            if not alive:
+                logger.warning("[DEBUG-MONITOR] %s process DEAD during startup (iter %d)", inst_id, i)
                 inst.info.status = InstanceStatus.error
                 return
             try:
                 async with httpx.AsyncClient(timeout=2) as c:
                     r = await c.get(f"{url}/health")
                     if r.status_code == 200:
+                        logger.warning("[DEBUG-MONITOR] %s health OK at iter %d", inst_id, i)
                         inst.info.status = InstanceStatus.running
                         break
             except Exception:
                 continue
         else:
+            logger.warning("[DEBUG-MONITOR] %s health check exhausted 60 iters, forcing running", inst_id)
             inst.info.status = InstanceStatus.running
+
+        logger.warning("[DEBUG-MONITOR] %s entering health loop, status=%s", inst_id, inst.info.status)
 
         # periodic health check
         while inst.info.status == InstanceStatus.running:
             await asyncio.sleep(cfg.health_check_interval)
-            if not self._monitor.is_process_alive(inst.info.pid):
+            alive = self._monitor.is_process_alive(inst.info.pid)
+            logger.warning("[DEBUG-MONITOR] %s periodic check: alive=%s", inst_id, alive)
+            if not alive:
                 inst.info.status = InstanceStatus.error
                 logger.warning("Instance %s process died", inst_id)
                 if cfg.auto_restart and inst.info.restart_count < cfg.auto_restart_max_retries:
@@ -494,6 +505,11 @@ class InstanceManager:
             logger.error("Failed to restart instance %s: %s", inst_id, e)
 
     def _kill_process(self, inst: InstanceProcess) -> None:
+        import traceback as _tb
+        logger.warning("[DEBUG-KILL] _kill_process called for pid=%s, id=%s, caller:\n%s",
+                       inst.process.pid if inst.process else None,
+                       inst.info.id,
+                       "".join(_tb.format_stack()[-4:-1]))
         if inst.process and inst.process.poll() is None:
             try:
                 # Kill the entire process tree
@@ -509,6 +525,10 @@ class InstanceManager:
                 pass
 
     async def stop_instance(self, inst_id: str) -> bool:
+        import traceback as _tb
+        logger.warning("[DEBUG-STOP] stop_instance called for id=%s, caller:\n%s",
+                       inst_id,
+                       "".join(_tb.format_stack()[-4:-1]))
         inst = self._instances.get(inst_id)
         if not inst:
             return False
