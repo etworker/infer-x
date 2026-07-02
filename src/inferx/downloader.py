@@ -156,3 +156,80 @@ class ModelDownloader:
                             progress.speed_bytes_per_sec = downloaded / elapsed
 
         progress.save_path = str(save_path)
+
+    # ---- Auto-download safetensor for gguf models --------------------------
+
+    async def auto_download_safetensors(self, gguf_models: list) -> list:
+        """Auto-download safetensor versions for gguf models."""
+        results = []
+        
+        # Map gguf model names to HuggingFace repos
+        hf_model_map = {
+            "qwen2.5": "Qwen/Qwen2.5-{size}-Instruct",
+            "qwen3": "Qwen/Qwen3-{size}",
+            "qwen3.5": "Qwen/Qwen3.5-{size}",
+            "gemma-4": "google/gemma-4-{size}-it",
+            "llama": "meta-llama/Llama-{size}",
+            "mistral": "mistralai/Mistral-{size}",
+        }
+        
+        for gguf_name in gguf_models:
+            if not gguf_name.endswith(".gguf"):
+                continue
+                
+            # Extract model family and size from filename
+            name_lower = gguf_name.lower()
+            hf_repo = None
+            
+            for family, repo_template in hf_model_map.items():
+                if family in name_lower:
+                    # Try to extract size (e.g., 8B, 4B, 1.7B)
+                    import re
+                    size_match = re.search(r'(\d+\.?\d*[bB])', gguf_name)
+                    if size_match:
+                        size = size_match.group(1).replace('B', 'b').replace('b', 'B')
+                        hf_repo = repo_template.replace("{size}", size)
+                    break
+            
+            if not hf_repo:
+                # Fallback: try to guess from filename
+                # Remove quantization suffix (Q4_K_M, etc.) and .gguf
+                clean_name = re.sub(r'-Q[0-9]+_[A-Z0-9]+\.gguf$', '', gguf_name, flags=re.IGNORECASE)
+                clean_name = re.sub(r'-q[0-9]+_[a-z0-9]+\.gguf$', '', clean_name, flags=re.IGNORECASE)
+                # Try common patterns
+                if "qwen" in clean_name.lower():
+                    hf_repo = f"Qwen/{clean_name}"
+                elif "gemma" in clean_name.lower():
+                    hf_repo = f"google/{clean_name}"
+            
+            if not hf_repo:
+                results.append({"gguf": gguf_name, "status": "skipped", "reason": "cannot determine HF repo"})
+                continue
+            
+            # Check if already downloaded
+            repo_name = hf_repo.split("/")[-1]
+            target_dir = self._model_dir / repo_name
+            if target_dir.exists() and any(target_dir.glob("*.safetensors")):
+                results.append({"gguf": gguf_name, "hf_repo": hf_repo, "status": "exists", "path": str(target_dir)})
+                continue
+            
+            # Download
+            try:
+                req = DownloadRequest(
+                    source=DownloadSource.huggingface,
+                    repo=hf_repo,
+                )
+                progress = await self.start_download(req)
+                
+                # Wait for download to complete
+                while progress.status == DownloadStatus.downloading:
+                    await asyncio.sleep(1)
+                
+                if progress.status == DownloadStatus.completed:
+                    results.append({"gguf": gguf_name, "hf_repo": hf_repo, "status": "downloaded", "path": progress.save_path})
+                else:
+                    results.append({"gguf": gguf_name, "hf_repo": hf_repo, "status": "failed", "error": progress.error})
+            except Exception as e:
+                results.append({"gguf": gguf_name, "hf_repo": hf_repo, "status": "error", "error": str(e)})
+        
+        return results

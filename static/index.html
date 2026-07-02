@@ -1430,29 +1430,6 @@ function startBenchmarkPolling() {
   }, 3000);
 }
 
-async function startBenchmark() {
-  const models = Array.from(document.getElementById('bench-models').selectedOptions).map(o => o.value);
-  const backends = Array.from(document.getElementById('bench-backends').selectedOptions).map(o => o.value);
-  
-  if (models.length === 0 || backends.length === 0) {
-    toast('Please select at least one model and one backend', false);
-    return;
-  }
-
-  const body = {
-    models,
-    backends,
-    num_iterations: parseInt(document.getElementById('bench-iterations').value) || 3,
-    timeout_seconds: parseInt(document.getElementById('bench-timeout').value) || 120,
-  };
-
-  try {
-    const result = await api('/benchmark/batches', { method: 'POST', body: JSON.stringify(body) });
-    toast('Benchmark started: ' + result.batch_id);
-    renderBenchmark();
-  } catch (e) { toast(e.message, false); }
-}
-
 async function viewReport(reportId) {
   try {
     const report = await api('/benchmark/reports/' + reportId);
