@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Inference Server Manager</title>
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<title>InferX</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{--bg:#0f1117;--surface:#1a1d27;--surface2:#242836;--border:#2e3345;--text:#e4e6ed;--text2:#8b8fa3;--accent:#6c5ce7;--accent2:#a29bfe;--green:#00b894;--red:#e17055;--yellow:#fdcb6e;--blue:#74b9ff;--radius:8px}
@@ -1342,40 +1343,40 @@ async function viewReport(reportId) {
     
     p.innerHTML = `
       <div class="card-header">
-        <h2>Report: ${report.id}</h2>
-        <button class="btn-ghost" onclick="renderBenchmark()">Back</button>
+        <h2>测试报告: ${report.id}</h2>
+        <button class="btn-ghost" onclick="renderBenchmark()">返回</button>
       </div>
       
       <!-- Summary -->
       <div class="card">
-        <h3 style="margin-bottom:12px">Summary</h3>
+        <h3 style="margin-bottom:12px">测试概览</h3>
         <div class="form-row">
-          <div class="stat-card"><div class="label">Models Tested</div><div class="value" style="font-size:16px">${report.config?.models?.length || 0}</div></div>
-          <div class="stat-card"><div class="label">Backends Tested</div><div class="value" style="font-size:16px">${report.config?.backends?.length || 0}</div></div>
-          <div class="stat-card"><div class="label">Total Duration</div><div class="value" style="font-size:16px">${report.duration_seconds?.toFixed(0) || 0}s</div></div>
-          <div class="stat-card"><div class="label">Total Combinations</div><div class="value" style="font-size:16px">${report.results?.length || 0}</div></div>
+          <div class="stat-card"><div class="label">测试模型数</div><div class="value" style="font-size:16px">${report.config?.models?.length || 0}</div></div>
+          <div class="stat-card"><div class="label">测试引擎数</div><div class="value" style="font-size:16px">${report.config?.backends?.length || 0}</div></div>
+          <div class="stat-card"><div class="label">总耗时</div><div class="value" style="font-size:16px">${report.duration_seconds?.toFixed(0) || 0}秒</div></div>
+          <div class="stat-card"><div class="label">测试组合数</div><div class="value" style="font-size:16px">${report.results?.length || 0}</div></div>
         </div>
       </div>
 
       <!-- Best Performers -->
       <div class="card">
-        <h3 style="margin-bottom:12px">Best Performers</h3>
+        <h3 style="margin-bottom:12px">最佳性能</h3>
         <div class="form-row">
           ${report.best_tokens_per_second ? `
           <div class="stat-card" style="border-left:3px solid var(--green)">
-            <div class="label">Fastest (tok/s)</div>
+            <div class="label">最快吞吐量 (tok/s)</div>
             <div class="value" style="font-size:16px;color:var(--green)">${report.best_tokens_per_second.value?.toFixed(1)}</div>
             <div style="font-size:12px;color:var(--text2)">${report.best_tokens_per_second.backend} / ${report.best_tokens_per_second.model}</div>
           </div>` : ''}
           ${report.best_ttft ? `
           <div class="stat-card" style="border-left:3px solid var(--blue)">
-            <div class="label">Lowest TTFT (ms)</div>
+            <div class="label">最低首字时间 (ms)</div>
             <div class="value" style="font-size:16px;color:var(--blue)">${report.best_ttft.value?.toFixed(0)}</div>
             <div style="font-size:12px;color:var(--text2)">${report.best_ttft.backend} / ${report.best_ttft.model}</div>
           </div>` : ''}
           ${report.lowest_memory ? `
           <div class="stat-card" style="border-left:3px solid var(--accent)">
-            <div class="label">Lowest VRAM (MB)</div>
+            <div class="label">最低显存 (MB)</div>
             <div class="value" style="font-size:16px;color:var(--accent)">${report.lowest_memory.value?.toFixed(0)}</div>
             <div style="font-size:12px;color:var(--text2)">${report.lowest_memory.backend} / ${report.lowest_memory.model}</div>
           </div>` : ''}
@@ -1384,13 +1385,13 @@ async function viewReport(reportId) {
 
       <!-- Detailed Results Table -->
       <div class="card">
-        <h3 style="margin-bottom:12px">Detailed Results (sorted by tok/s)</h3>
+        <h3 style="margin-bottom:12px">详细结果 (按吞吐量排序)</h3>
         <div class="table-wrap">
           <table>
             <thead><tr>
-              <th>#</th><th>Model</th><th>Backend</th>
-              <th>Tok/s</th><th>TTFT (ms)</th><th>VRAM (MB)</th>
-              <th>Status</th>
+              <th>#</th><th>模型</th><th>引擎</th>
+              <th>吞吐量</th><th>首字时间</th><th>显存占用</th>
+              <th>状态</th>
             </tr></thead>
             <tbody>
               ${sorted.map((r, i) => `
@@ -1398,10 +1399,10 @@ async function viewReport(reportId) {
                   <td>${i + 1}</td>
                   <td style="font-weight:500">${r.model}</td>
                   <td><span class="badge badge-running">${r.backend}</span></td>
-                  <td style="color:var(--green);font-weight:600">${r.avg_tokens_per_second?.toFixed(1) || '-'}</td>
-                  <td>${r.avg_ttft_ms?.toFixed(0) || '-'}</td>
-                  <td>${r.max_gpu_memory_mb?.toFixed(0) || '-'}</td>
-                  <td>${r.success ? '<span class="badge badge-running">OK</span>' : '<span class="badge badge-error">Failed</span>'}</td>
+                  <td style="color:var(--green);font-weight:600">${r.avg_tokens_per_second?.toFixed(1) || '-'} tok/s</td>
+                  <td>${r.avg_ttft_ms?.toFixed(0) || '-'} ms</td>
+                  <td>${r.max_gpu_memory_mb?.toFixed(0) || '-'} MB</td>
+                  <td>${r.success ? '<span class="badge badge-running">成功</span>' : '<span class="badge badge-error">失败</span>'}</td>
                 </tr>
               `).join('')}
             </tbody>
@@ -1411,16 +1412,16 @@ async function viewReport(reportId) {
 
       <!-- Conclusion -->
       <div class="card">
-        <h3 style="margin-bottom:12px">Conclusion</h3>
+        <h3 style="margin-bottom:12px">结论</h3>
         <div style="font-size:14px;line-height:1.8">
           ${sorted.length > 0 ? `
-            <p>Based on ${report.results?.length || 0} test combinations:</p>
+            <p>基于 ${report.results?.length || 0} 组测试：</p>
             <ul style="margin-left:20px">
-              <li><strong>Best throughput:</strong> ${sorted[0].backend} + ${sorted[0].model} at <span style="color:var(--green)">${sorted[0].avg_tokens_per_second?.toFixed(1)} tok/s</span></li>
-              ${sorted.length > 1 ? `<li><strong>Runner-up:</strong> ${sorted[1].backend} + ${sorted[1].model} at <span style="color:var(--green)">${sorted[1].avg_tokens_per_second?.toFixed(1)} tok/s</span></li>` : ''}
-              ${report.lowest_memory ? `<li><strong>Most memory efficient:</strong> ${report.lowest_memory.backend} + ${report.lowest_memory.model} at <span style="color:var(--accent)">${report.lowest_memory.value?.toFixed(0)} MB VRAM</span></li>` : ''}
+              <li><strong>最佳吞吐量：</strong>${sorted[0].backend} + ${sorted[0].model}，达到 <span style="color:var(--green)">${sorted[0].avg_tokens_per_second?.toFixed(1)} tok/s</span></li>
+              ${sorted.length > 1 ? `<li><strong>次优方案：</strong>${sorted[1].backend} + ${sorted[1].model}，达到 <span style="color:var(--green)">${sorted[1].avg_tokens_per_second?.toFixed(1)} tok/s</span></li>` : ''}
+              ${report.lowest_memory ? `<li><strong>最省显存：</strong>${report.lowest_memory.backend} + ${report.lowest_memory.model}，仅需 <span style="color:var(--accent)">${report.lowest_memory.value?.toFixed(0)} MB</span></li>` : ''}
             </ul>
-          ` : '<p style="color:var(--text2)">No successful results to analyze.</p>'}
+          ` : '<p style="color:var(--text2)">无成功结果可分析。</p>'}
         </div>
       </div>
     `;
