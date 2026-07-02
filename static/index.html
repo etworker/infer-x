@@ -1170,24 +1170,7 @@ async function renderBenchmark() {
   benchModelsData = models;
   benchBackendsData = (backendsData.backends || []).filter(b => b.installed);
 
-  // Render form
-  document.getElementById('bench-models-tbody').innerHTML = models.map((m, i) => `
-    <tr>
-      <td><input type="checkbox" class="bench-model-cb" data-idx="${i}"></td>
-      <td>${m.name}</td>
-      <td><span class="badge badge-${m.name.endsWith('.gguf') ? 'running' : 'starting'}">${m.name.endsWith('.gguf') ? 'GGUF' : 'HF'}</span></td>
-      <td>${fmtMB(m.size_mb)}</td>
-    </tr>
-  `).join('');
-
-  document.getElementById('bench-backends-tbody').innerHTML = benchBackendsData.map((b, i) => `
-    <tr>
-      <td><input type="checkbox" class="bench-backend-cb" data-idx="${i}"></td>
-      <td>${b.name}</td>
-      <td>${b.id}</td>
-    </tr>
-  `).join('');
-
+  // Render full page first
   p.innerHTML = `
     <div class="card-header"><h2>Benchmark</h2></div>
     
@@ -1250,6 +1233,24 @@ async function renderBenchmark() {
       <div id="bench-reports-body"><div style="text-align:center;color:var(--text2);padding:12px">加载中...</div></div>
     </div>
   `;
+
+  // Now populate the tables
+  document.getElementById('bench-models-tbody').innerHTML = models.map((m, i) => `
+    <tr>
+      <td><input type="checkbox" class="bench-model-cb" data-idx="${i}"></td>
+      <td>${m.name}</td>
+      <td><span class="badge badge-${m.name.endsWith('.gguf') ? 'running' : 'starting'}">${m.name.endsWith('.gguf') ? 'GGUF' : 'HF'}</span></td>
+      <td>${fmtMB(m.size_mb)}</td>
+    </tr>
+  `).join('');
+
+  document.getElementById('bench-backends-tbody').innerHTML = benchBackendsData.map((b, i) => `
+    <tr>
+      <td><input type="checkbox" class="bench-backend-cb" data-idx="${i}"></td>
+      <td>${b.name}</td>
+      <td>${b.id}</td>
+    </tr>
+  `).join('');
 
   // Bind checkbox events
   document.querySelectorAll('.bench-model-cb').forEach(cb => {
