@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import time
-from typing import Dict, List, Optional
-
 import psutil
 
 try:
@@ -20,11 +17,11 @@ from .models import GPUInfo, SystemInfo
 
 class ResourceMonitor:
     def __init__(self):
-        self._instance_gpu_usage: Dict[int, int] = {}  # instance_pid -> gpu_mem_mb
+        self._instance_gpu_usage: dict[int, int] = {}  # instance_pid -> gpu_mem_mb
 
     # ---- GPU ----------------------------------------------------------------
 
-    def get_gpus(self) -> List[GPUInfo]:
+    def get_gpus(self) -> list[GPUInfo]:
         if not _NVML_AVAILABLE:
             return []
         gpus = []
@@ -60,7 +57,7 @@ class ResourceMonitor:
 
     # ---- RAM ----------------------------------------------------------------
 
-    def get_ram(self) -> Dict[str, int]:
+    def get_ram(self) -> dict[str, int]:
         vm = psutil.virtual_memory()
         return {
             "total_mb": vm.total // (1024 * 1024),
@@ -70,7 +67,7 @@ class ResourceMonitor:
 
     # ---- CPU ----------------------------------------------------------------
 
-    def get_cpu_info(self) -> Dict[str, Any]:
+    def get_cpu_info(self) -> dict[str, Any]:
         return {
             "count": psutil.cpu_count(logical=True),
             "percent": psutil.cpu_percent(interval=0.1),
@@ -78,7 +75,7 @@ class ResourceMonitor:
 
     # ---- combined -----------------------------------------------------------
 
-    def get_system_info(self, server_paths: Dict[str, str]) -> SystemInfo:
+    def get_system_info(self, server_paths: dict[str, str]) -> SystemInfo:
         gpus = self.get_gpus()
         ram = self.get_ram()
         cpu = self.get_cpu_info()
@@ -100,13 +97,13 @@ class ResourceMonitor:
     def remove_instance_gpu(self, pid: int) -> None:
         self._instance_gpu_usage.pop(pid, None)
 
-    def get_instance_gpu(self, pid: int) -> Optional[int]:
+    def get_instance_gpu(self, pid: int) -> int | None:
         return self._instance_gpu_usage.get(pid)
 
     # ---- process helpers ----------------------------------------------------
 
     @staticmethod
-    def get_process_memory_mb(pid: int) -> Optional[float]:
+    def get_process_memory_mb(pid: int) -> float | None:
         try:
             p = psutil.Process(pid)
             mem = p.memory_info()

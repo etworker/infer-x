@@ -7,10 +7,9 @@ import time
 from collections import defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field
-
 
 # ---------------------------------------------------------------------------
 # Alert Rules & Alerts
@@ -26,7 +25,7 @@ class AlertRule(BaseModel):
     threshold: float
     duration_seconds: int = 60  # How long condition must be true
     cooldown_seconds: int = 300  # Minimum time between alerts
-    notify_channels: List[str] = Field(default_factory=lambda: ["log"])
+    notify_channels: list[str] = Field(default_factory=lambda: ["log"])
     message_template: str = ""
 
 
@@ -41,7 +40,7 @@ class Alert(BaseModel):
     threshold: float
     message: str
     fired_at: str
-    resolved_at: Optional[str] = None
+    resolved_at: str | None = None
     acknowledged: bool = False
 
 
@@ -50,17 +49,17 @@ class AlertManager:
 
     def __init__(self, data_dir: Path):
         self._data_dir = data_dir
-        self._rules: Dict[str, AlertRule] = {}
-        self._alerts: List[Alert] = []
-        self._alert_timestamps: Dict[str, float] = {}  # rule_id -> last_alert_time
-        self._condition_start: Dict[str, float] = {}  # rule_id -> condition_start_time
+        self._rules: dict[str, AlertRule] = {}
+        self._alerts: list[Alert] = []
+        self._alert_timestamps: dict[str, float] = {}  # rule_id -> last_alert_time
+        self._condition_start: dict[str, float] = {}  # rule_id -> condition_start_time
         self._load_rules()
 
     def _load_rules(self):
         rules_file = self._data_dir / "alert_rules.json"
         if rules_file.exists():
             try:
-                with open(rules_file, "r") as f:
+                with open(rules_file) as f:
                     data = json.load(f)
                 for rule_data in data.get("rules", []):
                     rule = AlertRule(**rule_data)
@@ -75,10 +74,10 @@ class AlertManager:
         with open(rules_file, "w") as f:
             json.dump(data, f, indent=2)
 
-    def list_rules(self) -> List[AlertRule]:
+    def list_rules(self) -> list[AlertRule]:
         return list(self._rules.values())
 
-    def get_rule(self, rule_id: str) -> Optional[AlertRule]:
+    def get_rule(self, rule_id: str) -> AlertRule | None:
         return self._rules.get(rule_id)
 
     def create_rule(self, rule: AlertRule) -> AlertRule:
@@ -86,7 +85,7 @@ class AlertManager:
         self._save_rules()
         return rule
 
-    def update_rule(self, rule_id: str, updates: Dict[str, Any]) -> Optional[AlertRule]:
+    def update_rule(self, rule_id: str, updates: dict[str, Any]) -> AlertRule | None:
         rule = self._rules.get(rule_id)
         if not rule:
             return None
@@ -103,7 +102,7 @@ class AlertManager:
             return True
         return False
 
-    def list_alerts(self, status: Optional[str] = None) -> List[Alert]:
+    def list_alerts(self, status: str | None = None) -> list[Alert]:
         if status:
             return [a for a in self._alerts if a.status == status]
         return list(self._alerts)
@@ -115,7 +114,7 @@ class AlertManager:
                 return True
         return False
 
-    def check_metric(self, metric_name: str, current_value: float) -> List[Alert]:
+    def check_metric(self, metric_name: str, current_value: float) -> list[Alert]:
         """Check if any rules are triggered by the current metric value."""
         import uuid
         new_alerts = []
@@ -198,8 +197,8 @@ class ModelStats(BaseModel):
     total_tokens_in: int = 0
     total_tokens_out: int = 0
     avg_latency_ms: float = 0.0
-    last_used: Optional[str] = None
-    first_used: Optional[str] = None
+    last_used: str | None = None
+    first_used: str | None = None
 
 
 class UsageTracker:
@@ -207,17 +206,17 @@ class UsageTracker:
 
     def __init__(self, data_dir: Path):
         self._data_dir = data_dir
-        self._request_log: List[Dict[str, Any]] = []
-        self._model_stats: Dict[str, ModelStats] = {}
-        self._latencies: List[float] = []
-        self._hourly_counts: Dict[str, int] = defaultdict(int)  # "YYYY-MM-DD-HH" -> count
+        self._request_log: list[dict[str, Any]] = []
+        self._model_stats: dict[str, ModelStats] = {}
+        self._latencies: list[float] = []
+        self._hourly_counts: dict[str, int] = defaultdict(int)  # "YYYY-MM-DD-HH" -> count
         self._load_stats()
 
     def _load_stats(self):
         stats_file = self._data_dir / "usage_stats.json"
         if stats_file.exists():
             try:
-                with open(stats_file, "r") as f:
+                with open(stats_file) as f:
                     data = json.load(f)
                 self._hourly_counts = defaultdict(int, data.get("hourly_counts", {}))
                 for ms_data in data.get("model_stats", []):
@@ -302,11 +301,11 @@ class UsageTracker:
             max_latency_ms=max(latencies) if latencies else 0,
         )
 
-    def get_model_stats(self) -> List[ModelStats]:
+    def get_model_stats(self) -> list[ModelStats]:
         """Get per-model usage statistics."""
         return list(self._model_stats.values())
 
-    def get_hourly_stats(self, days: int = 7) -> Dict[str, int]:
+    def get_hourly_stats(self, days: int = 7) -> dict[str, int]:
         """Get hourly request counts for the last N days."""
         cutoff = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d-%H")
         return {k: v for k, v in self._hourly_counts.items() if k >= cutoff}
@@ -324,10 +323,10 @@ class AuditEntry(BaseModel):
     actor: str = "system"  # user, system, api
     target_type: str  # instance, model, config, preset
     target_id: str
-    details: Dict[str, Any] = Field(default_factory=dict)
+    details: dict[str, Any] = Field(default_factory=dict)
     success: bool = True
-    error_message: Optional[str] = None
-    ip_address: Optional[str] = None
+    error_message: str | None = None
+    ip_address: str | None = None
 
 
 class AuditLogger:
@@ -335,7 +334,7 @@ class AuditLogger:
 
     def __init__(self, data_dir: Path, max_entries: int = 10000):
         self._data_dir = data_dir
-        self._entries: List[AuditEntry] = []
+        self._entries: list[AuditEntry] = []
         self._max_entries = max_entries
         self._load_entries()
 
@@ -343,7 +342,7 @@ class AuditLogger:
         log_file = self._data_dir / "audit_log.json"
         if log_file.exists():
             try:
-                with open(log_file, "r") as f:
+                with open(log_file) as f:
                     data = json.load(f)
                 for entry_data in data.get("entries", []):
                     self._entries.append(AuditEntry(**entry_data))
@@ -364,11 +363,11 @@ class AuditLogger:
         action: str,
         target_type: str,
         target_id: str,
-        details: Optional[Dict[str, Any]] = None,
+        details: dict[str, Any] | None = None,
         success: bool = True,
-        error_message: Optional[str] = None,
+        error_message: str | None = None,
         actor: str = "api",
-        ip_address: Optional[str] = None,
+        ip_address: str | None = None,
     ) -> AuditEntry:
         """Create an audit log entry."""
         import uuid
@@ -395,11 +394,11 @@ class AuditLogger:
 
     def list_entries(
         self,
-        action: Optional[str] = None,
-        target_type: Optional[str] = None,
+        action: str | None = None,
+        target_type: str | None = None,
         limit: int = 100,
         offset: int = 0,
-    ) -> List[AuditEntry]:
+    ) -> list[AuditEntry]:
         """List audit entries with optional filters."""
         entries = self._entries
 
@@ -412,13 +411,13 @@ class AuditLogger:
         entries = list(reversed(entries))
         return entries[offset:offset + limit]
 
-    def get_entry(self, entry_id: str) -> Optional[AuditEntry]:
+    def get_entry(self, entry_id: str) -> AuditEntry | None:
         for entry in self._entries:
             if entry.id == entry_id:
                 return entry
         return None
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Get audit log statistics."""
         by_action = defaultdict(int)
         by_target = defaultdict(int)

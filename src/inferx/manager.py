@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import os
 import signal
@@ -13,22 +12,20 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import httpx
-import psutil
 
+from .backends import get_backend
 from .config import ConfigManager
 from .downloader import ModelDownloader
-from .monitor import ResourceMonitor
 from .models import (
     BackendType,
     InstanceInfo,
     InstanceStartRequest,
     InstanceStatus,
-    Preset,
 )
-from .backends import get_backend
+from .monitor import ResourceMonitor
 
 logger = logging.getLogger("infer_helper")
 
@@ -36,10 +33,10 @@ logger = logging.getLogger("infer_helper")
 @dataclass
 class InstanceProcess:
     info: InstanceInfo
-    process: Optional[subprocess.Popen] = field(default=None, repr=False)
-    log_file: Optional[Path] = field(default=None, repr=False)
-    _health_task: Optional[asyncio.Task] = field(default=None, repr=False)
-    _restart_task: Optional[asyncio.Task] = field(default=None, repr=False)
+    process: subprocess.Popen | None = field(default=None, repr=False)
+    log_file: Path | None = field(default=None, repr=False)
+    _health_task: asyncio.Task | None = field(default=None, repr=False)
+    _restart_task: asyncio.Task | None = field(default=None, repr=False)
 
 
 class InstanceManager:
@@ -51,7 +48,7 @@ class InstanceManager:
             hf_mirror_url=config_manager.config.hf_mirror_url,
             max_concurrent=config_manager.config.download_max_concurrent,
         )
-        self._instances: Dict[str, InstanceProcess] = {}
+        self._instances: dict[str, InstanceProcess] = {}
         self._ports_in_use: set = set()
         self._logs_dir = Path(__file__).parent / "logs"
         self._logs_dir.mkdir(exist_ok=True)
@@ -84,7 +81,7 @@ class InstanceManager:
 
     # ---- model discovery ----------------------------------------------------
 
-    def list_models(self, backend_type: Optional[BackendType] = None) -> List[Dict[str, Any]]:
+    def list_models(self, backend_type: BackendType | None = None) -> list[dict[str, Any]]:
         """List available models, optionally filtered by backend type."""
         model_dir = Path(self._config.config.model_dir).expanduser()
         models = []
@@ -111,7 +108,7 @@ class InstanceManager:
 
         return models
 
-    def get_model_info(self, name: str) -> Optional[Dict[str, Any]]:
+    def get_model_info(self, name: str) -> dict[str, Any] | None:
         model_dir = Path(self._config.config.model_dir).expanduser()
         target = model_dir / name
 
@@ -191,7 +188,7 @@ class InstanceManager:
         return False
 
     @staticmethod
-    def _guess_family(name: str) -> Optional[str]:
+    def _guess_family(name: str) -> str | None:
         name_lower = name.lower()
         for family in ["qwen", "gemma", "llama", "mistral", "phi", "deepseek", "yi", "baichuan"]:
             if family in name_lower:
@@ -199,7 +196,7 @@ class InstanceManager:
         return None
 
     @staticmethod
-    def _guess_quantization(name: str) -> Optional[str]:
+    def _guess_quantization(name: str) -> str | None:
         import re
         m = re.search(r"(Q[0-9]+_[A-Z0-9]+|F16|F32|BF16|IQ[0-9]+_[A-Z0-9]+)", name, re.IGNORECASE)
         return m.group(1).upper() if m else None
@@ -513,7 +510,6 @@ class InstanceManager:
         if inst.process and inst.process.poll() is None:
             try:
                 # Kill the entire process tree
-                import os
                 os.killpg(os.getpgid(inst.process.pid), signal.SIGTERM)
                 inst.process.wait(timeout=10)
             except (subprocess.TimeoutExpired, ProcessLookupError, OSError):
@@ -558,10 +554,10 @@ class InstanceManager:
         del self._instances[inst_id]
         return await self.start_instance(old_req)
 
-    def list_instances(self) -> List[InstanceInfo]:
+    def list_instances(self) -> list[InstanceInfo]:
         return [inst.info for inst in self._instances.values()]
 
-    def get_instance(self, inst_id: str) -> Optional[InstanceInfo]:
+    def get_instance(self, inst_id: str) -> InstanceInfo | None:
         inst = self._instances.get(inst_id)
         if inst:
             # refresh stats
@@ -574,14 +570,14 @@ class InstanceManager:
             return inst.info
         return None
 
-    def get_instance_logs(self, inst_id: str, lines: int = 100) -> List[str]:
+    def get_instance_logs(self, inst_id: str, lines: int = 100) -> list[str]:
         inst = self._instances.get(inst_id)
         if not inst or not inst.log_file or not inst.log_file.exists():
             return []
         try:
-            with open(inst.log_file, "r", encoding="utf-8", errors="replace") as f:
+            with open(inst.log_file, encoding="utf-8", errors="replace") as f:
                 all_lines = f.readlines()
-            return [l.rstrip("\n") for l in all_lines[-lines:]]
+            return [line.rstrip("\n") for line in all_lines[-lines:]]
         except Exception:
             return []
 

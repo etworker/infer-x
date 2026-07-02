@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -77,17 +77,17 @@ class GPUInfo(BaseModel):
     total_memory_mb: int
     used_memory_mb: int
     free_memory_mb: int
-    utilization_pct: Optional[float] = None
+    utilization_pct: float | None = None
 
 
 class SystemInfo(BaseModel):
-    gpus: List[GPUInfo]
+    gpus: list[GPUInfo]
     total_ram_mb: int
     used_ram_mb: int
     available_ram_mb: int
     cpu_count: int
     cpu_percent: float
-    server_paths: Dict[str, str]
+    server_paths: dict[str, str]
 
 
 class HealthResponse(BaseModel):
@@ -119,37 +119,37 @@ class DefaultConfig(BaseModel):
     auto_restart: bool = True
     auto_restart_max_retries: int = 3
     auto_restart_delay: int = 5
-    hf_mirror_url: Optional[str] = "https://hf-mirror.com"
+    hf_mirror_url: str | None = "https://hf-mirror.com"
     download_max_concurrent: int = 2
 
     # llama.cpp defaults
     default_ctx_size: int = 4096
     default_n_gpu_layers: str = "auto"
-    default_threads: Optional[int] = None
+    default_threads: int | None = None
     default_batch_size: int = 2048
     default_n_parallel: int = 1
     default_flash_attn: str = "auto"
     default_sleep_idle_seconds: int = -1
     default_mlock: bool = False
     default_no_mmap: bool = False
-    default_numa: Optional[str] = None
+    default_numa: str | None = None
     default_cont_batching: bool = True
 
     # vLLM defaults
     default_tensor_parallel_size: int = 1
     default_pipeline_parallel_size: int = 1
-    default_max_model_len: Optional[int] = None
+    default_max_model_len: int | None = None
     default_gpu_memory_utilization: float = 0.9
     default_max_num_seqs: int = 64
-    default_max_num_batched_tokens: Optional[int] = None
+    default_max_num_batched_tokens: int | None = None
     default_vllm_dtype: str = "auto"
-    default_quantization: Optional[str] = None
+    default_quantization: str | None = None
     default_trust_remote_code: bool = False
-    default_chat_template: Optional[str] = None
-    default_seed: Optional[int] = None
+    default_chat_template: str | None = None
+    default_seed: int | None = None
     default_disable_log_requests: bool = False
     default_enforce_eager: bool = False
-    default_max_context_len_to_capture: Optional[int] = None
+    default_max_context_len_to_capture: int | None = None
 
     # SGLang defaults
     default_tp: int = 1
@@ -157,23 +157,23 @@ class DefaultConfig(BaseModel):
     default_max_num_reqs: int = 64
     default_nnodes: int = 1
     default_nccl_nvls: bool = False
-    default_chunked_prefill_size: Optional[int] = None
-    default_mem_cache_size: Optional[int] = None
-    default_token_logprob_threshold: Optional[float] = None
-    default_schedule_policy: Optional[str] = None
+    default_chunked_prefill_size: int | None = None
+    default_mem_cache_size: int | None = None
+    default_token_logprob_threshold: float | None = None
+    default_schedule_policy: str | None = None
     default_schedule_conservativeness: float = 1.0
-    default_server_worker_path: Optional[str] = None
+    default_server_worker_path: str | None = None
 
     # TGI defaults
-    default_tgi_model_id: Optional[str] = None
+    default_tgi_model_id: str | None = None
     default_tgi_max_batch_prefill_tokens: int = 4096
-    default_tgi_max_batch_total_tokens: Optional[int] = None
+    default_tgi_max_batch_total_tokens: int | None = None
     default_tgi_max_concurrent_requests: int = 64
     default_tgi_max_input_length: int = 4096
     default_tgi_max_total_tokens: int = 8192
     default_tgi_sharded: bool = False
-    default_tgi_num_shard: Optional[int] = None
-    default_tgi_quantize: Optional[str] = None
+    default_tgi_num_shard: int | None = None
+    default_tgi_quantize: str | None = None
     default_tgi_dtype: str = "auto"
     default_tgi_cuda_flash_attention: bool = True
     default_tgi_disable_grammar: bool = False
@@ -208,68 +208,68 @@ class DefaultConfig(BaseModel):
     default_ov_batch_size: int = 1
     default_ov_max_model_len: int = 256
     default_ov_nireq: int = 1
-    default_ov_plugin_config: Optional[str] = None
-    default_ov_model_section: Optional[str] = None
+    default_ov_plugin_config: str | None = None
+    default_ov_model_section: str | None = None
 
 
 class ConfigUpdate(BaseModel):
-    model_dir: Optional[str] = None
-    default_backend: Optional[BackendType] = None
-    llama_server_bin: Optional[str] = None
-    vllm_server_bin: Optional[str] = None
-    sglang_server_bin: Optional[str] = None
-    port_range_start: Optional[int] = None
-    port_range_end: Optional[int] = None
-    default_host: Optional[str] = None
-    max_instances: Optional[int] = None
-    health_check_interval: Optional[int] = None
-    auto_restart: Optional[bool] = None
-    auto_restart_max_retries: Optional[int] = None
-    auto_restart_delay: Optional[int] = None
-    hf_mirror_url: Optional[str] = None
-    download_max_concurrent: Optional[int] = None
+    model_dir: str | None = None
+    default_backend: BackendType | None = None
+    llama_server_bin: str | None = None
+    vllm_server_bin: str | None = None
+    sglang_server_bin: str | None = None
+    port_range_start: int | None = None
+    port_range_end: int | None = None
+    default_host: str | None = None
+    max_instances: int | None = None
+    health_check_interval: int | None = None
+    auto_restart: bool | None = None
+    auto_restart_max_retries: int | None = None
+    auto_restart_delay: int | None = None
+    hf_mirror_url: str | None = None
+    download_max_concurrent: int | None = None
 
     # llama.cpp defaults
-    default_ctx_size: Optional[int] = None
-    default_n_gpu_layers: Optional[str] = None
-    default_threads: Optional[int] = None
-    default_batch_size: Optional[int] = None
-    default_n_parallel: Optional[int] = None
-    default_flash_attn: Optional[str] = None
-    default_sleep_idle_seconds: Optional[int] = None
-    default_mlock: Optional[bool] = None
-    default_no_mmap: Optional[bool] = None
-    default_numa: Optional[str] = None
-    default_cont_batching: Optional[bool] = None
+    default_ctx_size: int | None = None
+    default_n_gpu_layers: str | None = None
+    default_threads: int | None = None
+    default_batch_size: int | None = None
+    default_n_parallel: int | None = None
+    default_flash_attn: str | None = None
+    default_sleep_idle_seconds: int | None = None
+    default_mlock: bool | None = None
+    default_no_mmap: bool | None = None
+    default_numa: str | None = None
+    default_cont_batching: bool | None = None
 
     # vLLM defaults
-    default_tensor_parallel_size: Optional[int] = None
-    default_pipeline_parallel_size: Optional[int] = None
-    default_max_model_len: Optional[int] = None
-    default_gpu_memory_utilization: Optional[float] = None
-    default_max_num_seqs: Optional[int] = None
-    default_max_num_batched_tokens: Optional[int] = None
-    default_vllm_dtype: Optional[str] = None
-    default_quantization: Optional[str] = None
-    default_trust_remote_code: Optional[bool] = None
-    default_chat_template: Optional[str] = None
-    default_seed: Optional[int] = None
-    default_disable_log_requests: Optional[bool] = None
-    default_enforce_eager: Optional[bool] = None
-    default_max_context_len_to_capture: Optional[int] = None
+    default_tensor_parallel_size: int | None = None
+    default_pipeline_parallel_size: int | None = None
+    default_max_model_len: int | None = None
+    default_gpu_memory_utilization: float | None = None
+    default_max_num_seqs: int | None = None
+    default_max_num_batched_tokens: int | None = None
+    default_vllm_dtype: str | None = None
+    default_quantization: str | None = None
+    default_trust_remote_code: bool | None = None
+    default_chat_template: str | None = None
+    default_seed: int | None = None
+    default_disable_log_requests: bool | None = None
+    default_enforce_eager: bool | None = None
+    default_max_context_len_to_capture: int | None = None
 
     # SGLang defaults
-    default_tp: Optional[int] = None
-    default_mem_fraction_static: Optional[float] = None
-    default_max_num_reqs: Optional[int] = None
-    default_nnodes: Optional[int] = None
-    default_nccl_nvls: Optional[bool] = None
-    default_chunked_prefill_size: Optional[int] = None
-    default_mem_cache_size: Optional[int] = None
-    default_token_logprob_threshold: Optional[float] = None
-    default_schedule_policy: Optional[str] = None
-    default_schedule_conservativeness: Optional[float] = None
-    default_server_worker_path: Optional[str] = None
+    default_tp: int | None = None
+    default_mem_fraction_static: float | None = None
+    default_max_num_reqs: int | None = None
+    default_nnodes: int | None = None
+    default_nccl_nvls: bool | None = None
+    default_chunked_prefill_size: int | None = None
+    default_mem_cache_size: int | None = None
+    default_token_logprob_threshold: float | None = None
+    default_schedule_policy: str | None = None
+    default_schedule_conservativeness: float | None = None
+    default_server_worker_path: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -280,20 +280,20 @@ class ModelFileInfo(BaseModel):
     name: str
     path: str
     size_mb: float
-    quantization: Optional[str] = None
-    family: Optional[str] = None
+    quantization: str | None = None
+    family: str | None = None
 
 
 class ModelInfo(BaseModel):
     name: str
     path: str
     size_mb: float
-    quantization: Optional[str] = None
-    family: Optional[str] = None
-    architecture: Optional[str] = None
-    parameter_count: Optional[str] = None
-    context_length: Optional[int] = None
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    quantization: str | None = None
+    family: str | None = None
+    architecture: str | None = None
+    parameter_count: str | None = None
+    context_length: int | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -302,25 +302,25 @@ class ModelInfo(BaseModel):
 
 class DownloadRequest(BaseModel):
     source: DownloadSource
-    repo: Optional[str] = None
-    filename: Optional[str] = None
-    url: Optional[str] = None
-    quantization: Optional[str] = None
-    save_name: Optional[str] = None
+    repo: str | None = None
+    filename: str | None = None
+    url: str | None = None
+    quantization: str | None = None
+    save_name: str | None = None
 
 
 class DownloadProgress(BaseModel):
     task_id: str
     source: str
-    repo: Optional[str] = None
-    filename: Optional[str] = None
+    repo: str | None = None
+    filename: str | None = None
     status: DownloadStatus
     progress_pct: float = 0.0
     downloaded_bytes: int = 0
     total_bytes: int = 0
     speed_bytes_per_sec: float = 0.0
-    error: Optional[str] = None
-    save_path: Optional[str] = None
+    error: str | None = None
+    save_path: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -329,101 +329,101 @@ class DownloadProgress(BaseModel):
 
 class InstanceStartRequest(BaseModel):
     model: str
-    backend: Optional[BackendType] = None
-    port: Optional[int] = None
-    host: Optional[str] = None
-    preset: Optional[str] = None
-    extra_args: List[str] = Field(default_factory=list)
+    backend: BackendType | None = None
+    port: int | None = None
+    host: str | None = None
+    preset: str | None = None
+    extra_args: list[str] = Field(default_factory=list)
 
     # llama.cpp parameters
-    ctx_size: Optional[int] = None
-    n_gpu_layers: Optional[str] = None
-    threads: Optional[int] = None
-    batch_size: Optional[int] = None
-    n_parallel: Optional[int] = None
-    flash_attn: Optional[str] = None
-    alias: Optional[str] = None
-    sleep_idle_seconds: Optional[int] = None
-    mlock: Optional[bool] = None
-    no_mmap: Optional[bool] = None
-    numa: Optional[str] = None
-    cont_batching: Optional[bool] = None
+    ctx_size: int | None = None
+    n_gpu_layers: str | None = None
+    threads: int | None = None
+    batch_size: int | None = None
+    n_parallel: int | None = None
+    flash_attn: str | None = None
+    alias: str | None = None
+    sleep_idle_seconds: int | None = None
+    mlock: bool | None = None
+    no_mmap: bool | None = None
+    numa: str | None = None
+    cont_batching: bool | None = None
 
     # vLLM parameters
-    tensor_parallel_size: Optional[int] = None
-    pipeline_parallel_size: Optional[int] = None
-    max_model_len: Optional[int] = None
-    gpu_memory_utilization: Optional[float] = None
-    max_num_seqs: Optional[int] = None
-    max_num_batched_tokens: Optional[int] = None
-    dtype: Optional[str] = None
-    quantization: Optional[str] = None
-    trust_remote_code: Optional[bool] = None
-    chat_template: Optional[str] = None
-    seed: Optional[int] = None
-    disable_log_requests: Optional[bool] = None
-    enforce_eager: Optional[bool] = None
-    max_context_len_to_capture: Optional[int] = None
+    tensor_parallel_size: int | None = None
+    pipeline_parallel_size: int | None = None
+    max_model_len: int | None = None
+    gpu_memory_utilization: float | None = None
+    max_num_seqs: int | None = None
+    max_num_batched_tokens: int | None = None
+    dtype: str | None = None
+    quantization: str | None = None
+    trust_remote_code: bool | None = None
+    chat_template: str | None = None
+    seed: int | None = None
+    disable_log_requests: bool | None = None
+    enforce_eager: bool | None = None
+    max_context_len_to_capture: int | None = None
 
     # SGLang parameters
-    tp: Optional[int] = None
-    mem_fraction_static: Optional[float] = None
-    max_num_reqs: Optional[int] = None
-    nnodes: Optional[int] = None
-    nccl_nvls: Optional[bool] = None
-    chunked_prefill_size: Optional[int] = None
-    mem_cache_size: Optional[int] = None
-    token_logprob_threshold: Optional[float] = None
-    schedule_policy: Optional[str] = None
-    schedule_conservativeness: Optional[float] = None
-    server_worker_path: Optional[str] = None
+    tp: int | None = None
+    mem_fraction_static: float | None = None
+    max_num_reqs: int | None = None
+    nnodes: int | None = None
+    nccl_nvls: bool | None = None
+    chunked_prefill_size: int | None = None
+    mem_cache_size: int | None = None
+    token_logprob_threshold: float | None = None
+    schedule_policy: str | None = None
+    schedule_conservativeness: float | None = None
+    server_worker_path: str | None = None
 
     # TGI parameters
-    tgi_model_id: Optional[str] = None
-    tgi_max_batch_prefill_tokens: Optional[int] = None
-    tgi_max_batch_total_tokens: Optional[int] = None
-    tgi_max_concurrent_requests: Optional[int] = None
-    tgi_max_input_length: Optional[int] = None
-    tgi_max_total_tokens: Optional[int] = None
-    tgi_sharded: Optional[bool] = None
-    tgi_num_shard: Optional[int] = None
-    tgi_quantize: Optional[str] = None
-    tgi_dtype: Optional[str] = None
-    tgi_cuda_flash_attention: Optional[bool] = None
-    tgi_disable_grammar: Optional[bool] = None
+    tgi_model_id: str | None = None
+    tgi_max_batch_prefill_tokens: int | None = None
+    tgi_max_batch_total_tokens: int | None = None
+    tgi_max_concurrent_requests: int | None = None
+    tgi_max_input_length: int | None = None
+    tgi_max_total_tokens: int | None = None
+    tgi_sharded: bool | None = None
+    tgi_num_shard: int | None = None
+    tgi_quantize: str | None = None
+    tgi_dtype: str | None = None
+    tgi_cuda_flash_attention: bool | None = None
+    tgi_disable_grammar: bool | None = None
 
     # Ollama parameters
-    ollama_num_parallel: Optional[int] = None
-    ollama_num_gpu: Optional[int] = None
-    ollama_num_ctx: Optional[int] = None
-    ollama_num_batch: Optional[int] = None
-    ollama_low_vram: Optional[bool] = None
-    ollama_flash_attention: Optional[bool] = None
+    ollama_num_parallel: int | None = None
+    ollama_num_gpu: int | None = None
+    ollama_num_ctx: int | None = None
+    ollama_num_batch: int | None = None
+    ollama_low_vram: bool | None = None
+    ollama_flash_attention: bool | None = None
 
     # TensorRT-LLM parameters
-    trt_max_batch_size: Optional[int] = None
-    trt_max_input_len: Optional[int] = None
-    trt_max_output_len: Optional[int] = None
-    trt_max_seq_len: Optional[int] = None
-    trt_dtype: Optional[str] = None
-    trt_deprecate_legacy: Optional[bool] = None
+    trt_max_batch_size: int | None = None
+    trt_max_input_len: int | None = None
+    trt_max_output_len: int | None = None
+    trt_max_seq_len: int | None = None
+    trt_dtype: str | None = None
+    trt_deprecate_legacy: bool | None = None
 
     # LMDeploy parameters
-    lmdeploy_tp: Optional[int] = None
-    lmdeploy_session_len: Optional[int] = None
-    lmdeploy_max_batch_size: Optional[int] = None
-    lmdeploy_cache_max_entry_count: Optional[float] = None
-    lmdeploy_quant_policy: Optional[int] = None
-    lmdeploy_rope_scaling_factor: Optional[float] = None
-    lmdeploy_turbomind_tp: Optional[int] = None
+    lmdeploy_tp: int | None = None
+    lmdeploy_session_len: int | None = None
+    lmdeploy_max_batch_size: int | None = None
+    lmdeploy_cache_max_entry_count: float | None = None
+    lmdeploy_quant_policy: int | None = None
+    lmdeploy_rope_scaling_factor: float | None = None
+    lmdeploy_turbomind_tp: int | None = None
 
     # OpenVINO parameters
-    ov_model_name: Optional[str] = None
-    ov_batch_size: Optional[int] = None
-    ov_max_model_len: Optional[int] = None
-    ov_nireq: Optional[int] = None
-    ov_plugin_config: Optional[str] = None
-    ov_model_section: Optional[str] = None
+    ov_model_name: str | None = None
+    ov_batch_size: int | None = None
+    ov_max_model_len: int | None = None
+    ov_nireq: int | None = None
+    ov_plugin_config: str | None = None
+    ov_model_section: str | None = None
 
 
 class InstanceInfo(BaseModel):
@@ -433,21 +433,21 @@ class InstanceInfo(BaseModel):
     status: InstanceStatus
     port: int
     host: str
-    pid: Optional[int] = None
+    pid: int | None = None
     ctx_size: int = 4096
     n_gpu_layers: str = "auto"
     n_parallel: int = 1
-    started_at: Optional[str] = None
-    uptime_seconds: Optional[float] = None
-    gpu_memory_mb: Optional[int] = None
-    gpu_utilization_pct: Optional[float] = None
-    ram_usage_mb: Optional[float] = None
-    extra_args: List[str] = Field(default_factory=list)
+    started_at: str | None = None
+    uptime_seconds: float | None = None
+    gpu_memory_mb: int | None = None
+    gpu_utilization_pct: float | None = None
+    ram_usage_mb: float | None = None
+    extra_args: list[str] = Field(default_factory=list)
     restart_count: int = 0
 
 
 class InstanceList(BaseModel):
-    instances: List[InstanceInfo]
+    instances: list[InstanceInfo]
     total: int
 
 
@@ -458,97 +458,97 @@ class InstanceList(BaseModel):
 class Preset(BaseModel):
     name: str
     description: str = ""
-    backend: Optional[BackendType] = None
-    extra_args: List[str] = Field(default_factory=list)
+    backend: BackendType | None = None
+    extra_args: list[str] = Field(default_factory=list)
 
     # llama.cpp parameters
-    ctx_size: Optional[int] = None
-    n_gpu_layers: Optional[str] = None
-    threads: Optional[int] = None
-    batch_size: Optional[int] = None
-    n_parallel: Optional[int] = None
-    flash_attn: Optional[str] = None
-    sleep_idle_seconds: Optional[int] = None
-    mlock: Optional[bool] = None
-    no_mmap: Optional[bool] = None
-    numa: Optional[str] = None
-    cont_batching: Optional[bool] = None
+    ctx_size: int | None = None
+    n_gpu_layers: str | None = None
+    threads: int | None = None
+    batch_size: int | None = None
+    n_parallel: int | None = None
+    flash_attn: str | None = None
+    sleep_idle_seconds: int | None = None
+    mlock: bool | None = None
+    no_mmap: bool | None = None
+    numa: str | None = None
+    cont_batching: bool | None = None
 
     # vLLM parameters
-    tensor_parallel_size: Optional[int] = None
-    pipeline_parallel_size: Optional[int] = None
-    max_model_len: Optional[int] = None
-    gpu_memory_utilization: Optional[float] = None
-    max_num_seqs: Optional[int] = None
-    max_num_batched_tokens: Optional[int] = None
-    dtype: Optional[str] = None
-    quantization: Optional[str] = None
-    trust_remote_code: Optional[bool] = None
-    chat_template: Optional[str] = None
-    seed: Optional[int] = None
-    disable_log_requests: Optional[bool] = None
-    enforce_eager: Optional[bool] = None
-    max_context_len_to_capture: Optional[int] = None
+    tensor_parallel_size: int | None = None
+    pipeline_parallel_size: int | None = None
+    max_model_len: int | None = None
+    gpu_memory_utilization: float | None = None
+    max_num_seqs: int | None = None
+    max_num_batched_tokens: int | None = None
+    dtype: str | None = None
+    quantization: str | None = None
+    trust_remote_code: bool | None = None
+    chat_template: str | None = None
+    seed: int | None = None
+    disable_log_requests: bool | None = None
+    enforce_eager: bool | None = None
+    max_context_len_to_capture: int | None = None
 
     # SGLang parameters
-    tp: Optional[int] = None
-    mem_fraction_static: Optional[float] = None
-    max_num_reqs: Optional[int] = None
-    nnodes: Optional[int] = None
-    nccl_nvls: Optional[bool] = None
-    chunked_prefill_size: Optional[int] = None
-    mem_cache_size: Optional[int] = None
-    token_logprob_threshold: Optional[float] = None
-    schedule_policy: Optional[str] = None
-    schedule_conservativeness: Optional[float] = None
-    server_worker_path: Optional[str] = None
+    tp: int | None = None
+    mem_fraction_static: float | None = None
+    max_num_reqs: int | None = None
+    nnodes: int | None = None
+    nccl_nvls: bool | None = None
+    chunked_prefill_size: int | None = None
+    mem_cache_size: int | None = None
+    token_logprob_threshold: float | None = None
+    schedule_policy: str | None = None
+    schedule_conservativeness: float | None = None
+    server_worker_path: str | None = None
 
     # TGI parameters
-    tgi_model_id: Optional[str] = None
-    tgi_max_batch_prefill_tokens: Optional[int] = None
-    tgi_max_batch_total_tokens: Optional[int] = None
-    tgi_max_concurrent_requests: Optional[int] = None
-    tgi_max_input_length: Optional[int] = None
-    tgi_max_total_tokens: Optional[int] = None
-    tgi_sharded: Optional[bool] = None
-    tgi_num_shard: Optional[int] = None
-    tgi_quantize: Optional[str] = None
-    tgi_dtype: Optional[str] = None
-    tgi_cuda_flash_attention: Optional[bool] = None
-    tgi_disable_grammar: Optional[bool] = None
+    tgi_model_id: str | None = None
+    tgi_max_batch_prefill_tokens: int | None = None
+    tgi_max_batch_total_tokens: int | None = None
+    tgi_max_concurrent_requests: int | None = None
+    tgi_max_input_length: int | None = None
+    tgi_max_total_tokens: int | None = None
+    tgi_sharded: bool | None = None
+    tgi_num_shard: int | None = None
+    tgi_quantize: str | None = None
+    tgi_dtype: str | None = None
+    tgi_cuda_flash_attention: bool | None = None
+    tgi_disable_grammar: bool | None = None
 
     # Ollama parameters
-    ollama_num_parallel: Optional[int] = None
-    ollama_num_gpu: Optional[int] = None
-    ollama_num_ctx: Optional[int] = None
-    ollama_num_batch: Optional[int] = None
-    ollama_low_vram: Optional[bool] = None
-    ollama_flash_attention: Optional[bool] = None
+    ollama_num_parallel: int | None = None
+    ollama_num_gpu: int | None = None
+    ollama_num_ctx: int | None = None
+    ollama_num_batch: int | None = None
+    ollama_low_vram: bool | None = None
+    ollama_flash_attention: bool | None = None
 
     # TensorRT-LLM parameters
-    trt_max_batch_size: Optional[int] = None
-    trt_max_input_len: Optional[int] = None
-    trt_max_output_len: Optional[int] = None
-    trt_max_seq_len: Optional[int] = None
-    trt_dtype: Optional[str] = None
-    trt_deprecate_legacy: Optional[bool] = None
+    trt_max_batch_size: int | None = None
+    trt_max_input_len: int | None = None
+    trt_max_output_len: int | None = None
+    trt_max_seq_len: int | None = None
+    trt_dtype: str | None = None
+    trt_deprecate_legacy: bool | None = None
 
     # LMDeploy parameters
-    lmdeploy_tp: Optional[int] = None
-    lmdeploy_session_len: Optional[int] = None
-    lmdeploy_max_batch_size: Optional[int] = None
-    lmdeploy_cache_max_entry_count: Optional[float] = None
-    lmdeploy_quant_policy: Optional[int] = None
-    lmdeploy_rope_scaling_factor: Optional[float] = None
-    lmdeploy_turbomind_tp: Optional[int] = None
+    lmdeploy_tp: int | None = None
+    lmdeploy_session_len: int | None = None
+    lmdeploy_max_batch_size: int | None = None
+    lmdeploy_cache_max_entry_count: float | None = None
+    lmdeploy_quant_policy: int | None = None
+    lmdeploy_rope_scaling_factor: float | None = None
+    lmdeploy_turbomind_tp: int | None = None
 
     # OpenVINO parameters
-    ov_model_name: Optional[str] = None
-    ov_batch_size: Optional[int] = None
-    ov_max_model_len: Optional[int] = None
-    ov_nireq: Optional[int] = None
-    ov_plugin_config: Optional[str] = None
-    ov_model_section: Optional[str] = None
+    ov_model_name: str | None = None
+    ov_batch_size: int | None = None
+    ov_max_model_len: int | None = None
+    ov_nireq: int | None = None
+    ov_plugin_config: str | None = None
+    ov_model_section: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -563,5 +563,5 @@ class LogEntry(BaseModel):
 
 class InstanceLogs(BaseModel):
     instance_id: str
-    logs: List[LogEntry]
+    logs: list[LogEntry]
     total_lines: int

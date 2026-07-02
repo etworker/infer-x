@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 from .base import Backend
 
@@ -17,9 +17,9 @@ class LlamaCppBackend(Backend):
         port: int,
         host: str,
         log_file: str,
-        params: Dict[str, Any],
-        extra_args: List[str],
-    ) -> List[str]:
+        params: dict[str, Any],
+        extra_args: list[str],
+    ) -> list[str]:
         binary = params.get("binary", "llama-server")
         ctx_size = params.get("ctx_size", 4096)
         n_gpu_layers = params.get("n_gpu_layers", "auto")
@@ -66,10 +66,10 @@ class LlamaCppBackend(Backend):
         cmd.extend(extra_args)
         return cmd
 
-    def get_env(self, binary_path: str) -> Dict[str, str]:
+    def get_env(self, binary_path: str) -> dict[str, str]:
         return {"LD_LIBRARY_PATH": str(Path(binary_path).parent)}
 
-    def get_model_paths(self, model_dir: Path) -> List[Dict[str, Any]]:
+    def get_model_paths(self, model_dir: Path) -> list[dict[str, Any]]:
         models = []
         if not model_dir.exists():
             return models

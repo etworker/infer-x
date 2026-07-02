@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 import yaml
 
@@ -13,17 +13,17 @@ DEFAULT_CONFIG_PATH = Path(__file__).parent.parent.parent / "config.yaml"
 
 
 class ConfigManager:
-    def __init__(self, config_path: Optional[str] = None):
+    def __init__(self, config_path: str | None = None):
         self._path = Path(config_path) if config_path else DEFAULT_CONFIG_PATH
         self._config = DefaultConfig()
-        self._presets: Dict[str, Preset] = {}
+        self._presets: dict[str, Preset] = {}
         self._load()
 
     def _load(self) -> None:
         if not self._path.exists():
             self._save()
             return
-        with open(self._path, "r", encoding="utf-8") as f:
+        with open(self._path, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
         cfg_data = data.get("config", {})
         if cfg_data:
@@ -52,10 +52,10 @@ class ConfigManager:
         self._save()
         return self._config
 
-    def list_presets(self) -> Dict[str, Preset]:
+    def list_presets(self) -> dict[str, Preset]:
         return dict(self._presets)
 
-    def get_preset(self, name: str) -> Optional[Preset]:
+    def get_preset(self, name: str) -> Preset | None:
         return self._presets.get(name)
 
     def save_preset(self, preset: Preset) -> Preset:

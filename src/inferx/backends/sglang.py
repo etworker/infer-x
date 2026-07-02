@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 from .base import Backend
 
@@ -17,13 +17,12 @@ class SGLangBackend(Backend):
         port: int,
         host: str,
         log_file: str,
-        params: Dict[str, Any],
-        extra_args: List[str],
-    ) -> List[str]:
+        params: dict[str, Any],
+        extra_args: list[str],
+    ) -> list[str]:
         binary = params.get("binary", "python -m sglang.launch_server")
 
         # Prepend environment variable to command
-        env_prefix = "SGLANG_KERNEL_DISABLE_JIT=1 SGL_KERNEL_DISABLE_JIT=1"
 
         if binary.startswith("python"):
             cmd = [binary.split()[0], "-m", binary.split()[-1]]
@@ -48,13 +47,13 @@ class SGLangBackend(Backend):
         cmd.extend(extra_args)
         return cmd
 
-    def get_env(self, binary_path: str) -> Dict[str, str]:
+    def get_env(self, binary_path: str) -> dict[str, str]:
         return {
             "SGLANG_KERNEL_DISABLE_JIT": "1",
             "SGL_KERNEL_DISABLE_JIT": "1",
         }
 
-    def get_model_paths(self, model_dir: Path) -> List[Dict[str, Any]]:
+    def get_model_paths(self, model_dir: Path) -> list[dict[str, Any]]:
         """Discover HuggingFace model directories."""
         models = []
         if not model_dir.exists():

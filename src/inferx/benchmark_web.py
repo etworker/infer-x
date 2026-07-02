@@ -4,22 +4,25 @@ from __future__ import annotations
 
 import asyncio
 import json
-import time
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
-from .benchmark import BenchmarkConfig, BenchmarkExecutor, BenchmarkReport, BenchmarkResult
+from .benchmark import (
+    BenchmarkConfig,
+    BenchmarkManager,
+    BatchBenchmarkReport,
+)
 
 
 class BatchBenchmarkConfig(BaseModel):
     """Configuration for batch benchmark testing."""
-    models: List[str]
-    backends: List[str]
-    scenarios: Optional[List[Dict[str, Any]]] = None
+    models: list[str]
+    backends: list[str]
+    scenarios: list[dict[str, Any]] | None = None
     num_iterations: int = 3
     warmup_iterations: int = 1
     timeout_seconds: int = 120
@@ -31,13 +34,13 @@ class BenchmarkProgress(BaseModel):
     status: str  # pending, running, completed, failed
     total_tasks: int = 0
     completed_tasks: int = 0
-    current_task: Optional[str] = None
-    current_model: Optional[str] = None
-    current_backend: Optional[str] = None
-    started_at: Optional[str] = None
-    completed_at: Optional[str] = None
-    results: List[Dict[str, Any]] = []
-    errors: List[Dict[str, Any]] = []
+    current_task: str | None = None
+    current_model: str | None = None
+    current_backend: str | None = None
+    started_at: str | None = None
+    completed_at: str | None = None
+    results: list[dict[str, Any]] = []
+    errors: list[dict[str, Any]] = []
 
 
 class BenchmarkWebManager:
@@ -46,19 +49,19 @@ class BenchmarkWebManager:
     def __init__(self, data_dir: Path):
         self._data_dir = data_dir
         self._data_dir.mkdir(parents=True, exist_ok=True)
-        self._executor = BenchmarkExecutor(data_dir)
-        self._active_batches: Dict[str, BenchmarkProgress] = {}
+        self._executor = BenchmarkManager(data_dir)
+        self._active_batches: dict[str, BenchmarkProgress] = {}
 
     def set_manager(self, manager):
         """Set the instance manager for starting/stopping instances."""
         self._executor.set_manager(manager)
-        self._batch_tasks: Dict[str, asyncio.Task] = {}
+        self._batch_tasks: dict[str, asyncio.Task] = {}
 
-    def list_reports(self) -> List[Dict[str, Any]]:
+    def list_reports(self) -> list[dict[str, Any]]:
         """List all benchmark reports."""
         return self._executor.list_reports()
 
-    def get_report(self, report_id: str) -> Optional[BenchmarkReport]:
+    def get_report(self, report_id: str) -> BatchBenchmarkReport | None:
         """Get a specific benchmark report."""
         return self._executor.get_report(report_id)
 
@@ -66,12 +69,12 @@ class BenchmarkWebManager:
         """Delete a benchmark report."""
         return self._executor.delete_report(report_id)
 
-    def list_batches(self) -> List[Dict[str, Any]]:
+    def list_batches(self) -> list[dict[str, Any]]:
         """List all batch benchmark runs."""
         batches = []
         for batch_file in self._data_dir.glob("batch_*.json"):
             try:
-                with open(batch_file, "r") as f:
+                with open(batch_file) as f:
                     data = json.load(f)
                 batches.append({
                     "batch_id": data.get("batch_id"),
@@ -87,7 +90,7 @@ class BenchmarkWebManager:
                 continue
         return sorted(batches, key=lambda x: x.get("started_at", ""), reverse=True)
 
-    def get_batch_progress(self, batch_id: str) -> Optional[BenchmarkProgress]:
+    def get_batch_progress(self, batch_id: str) -> BenchmarkProgress | None:
         """Get progress of a batch benchmark run."""
         # Check active batches first
         if batch_id in self._active_batches:
@@ -96,7 +99,7 @@ class BenchmarkWebManager:
         # Load from file
         batch_file = self._data_dir / f"batch_{batch_id}.json"
         if batch_file.exists():
-            with open(batch_file, "r") as f:
+            with open(batch_file) as f:
                 data = json.load(f)
             return BenchmarkProgress(**data)
 
@@ -137,7 +140,7 @@ class BenchmarkWebManager:
         self,
         batch_id: str,
         config: BatchBenchmarkConfig,
-        tasks: List[Dict[str, str]],
+        tasks: list[dict[str, str]],
     ):
         """Run batch benchmark in background."""
         progress = self._active_batches.get(batch_id)

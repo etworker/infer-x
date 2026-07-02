@@ -2,44 +2,41 @@
 
 from __future__ import annotations
 
-import asyncio
-import time
+import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query, Request
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import StreamingResponse
+import httpx
 from pydantic import BaseModel
 
 from .config import ConfigManager
 from .manager import InstanceManager
-from .monitoring import AlertManager, AlertRule, AuditLogger, UsageTracker
 from .models import (
-    BackendType,
     ConfigUpdate,
     DefaultConfig,
-    DownloadRequest,
     DownloadProgress,
+    DownloadRequest,
     HealthResponse,
     InstanceInfo,
     InstanceList,
     InstanceLogs,
     InstanceStartRequest,
-    InstanceStatus,
-    ModelInfo,
     Preset,
     SystemInfo,
 )
+from .monitoring import AlertManager, AlertRule, AuditLogger, UsageTracker
 
 router = APIRouter(prefix="/api")
 
 # These are set during app startup in main.py
-_config: Optional[ConfigManager] = None
-_manager: Optional[InstanceManager] = None
-_alert_manager: Optional[AlertManager] = None
-_usage_tracker: Optional[UsageTracker] = None
-_audit_logger: Optional[AuditLogger] = None
+_config: ConfigManager | None = None
+_manager: InstanceManager | None = None
+_alert_manager: AlertManager | None = None
+_usage_tracker: UsageTracker | None = None
+_audit_logger: AuditLogger | None = None
 
 
 def init_routes(config: ConfigManager, manager: InstanceManager) -> None:
@@ -141,8 +138,8 @@ async def system_version():
     return {
         "version": "1.0.0",
         "name": "Inference Server Manager",
-        "build_date": "2026-07-01",
-        "python_version": "3.12",
+        "build_date": datetime.now().strftime("%Y-%m-%d"),
+        "python_version": f"{sys.version_info.major}.{sys.version_info.minor}",
     }
 
 
@@ -214,17 +211,17 @@ async def download_model(body: DownloadRequest):
 @router.post("/models/download/safetensors")
 async def auto_download_safetensors(source: str = "auto"):
     """Auto-download safetensor versions for all gguf models.
-    
+
     Args:
-        source: "hf" for HuggingFace only, "ms" for ModelScope only, 
+        source: "hf" for HuggingFace only, "ms" for ModelScope only,
                 "auto" for try HF first, fallback to ModelScope
     """
     models = _mgr().list_models()
     gguf_models = [m["name"] for m in models if m["name"].endswith(".gguf")]
-    
+
     if not gguf_models:
         return {"message": "No GGUF models found", "results": []}
-    
+
     results = await _mgr().downloader.auto_download_safetensors(gguf_models, source=source)
     return {"message": f"Processed {len(results)} models", "results": results}
 
@@ -277,8 +274,8 @@ async def start_instance(body: InstanceStartRequest):
 
 @router.get("/instances", response_model=InstanceList)
 async def list_instances(
-    backend: Optional[str] = Query(None, description="Filter by backend"),
-    status: Optional[str] = Query(None, description="Filter by status"),
+    backend: str | None = Query(None, description="Filter by backend"),
+    status: str | None = Query(None, description="Filter by status"),
 ):
     instances = _mgr().list_instances()
     if backend:
@@ -342,7 +339,7 @@ async def instance_error(inst_id: str):
     error_logs = []
     if stderr_path.exists():
         try:
-            with open(stderr_path, "r", encoding="utf-8", errors="replace") as f:
+            with open(stderr_path, encoding="utf-8", errors="replace") as f:
                 error_logs = f.readlines()[-50:]  # Last 50 lines
         except Exception:
             pass
@@ -359,11 +356,11 @@ async def instance_error(inst_id: str):
 # ===========================================================================
 
 class BatchStopRequest(BaseModel):
-    instance_ids: List[str]
+    instance_ids: list[str]
 
 
 class BatchStartRequest(BaseModel):
-    requests: List[InstanceStartRequest]
+    requests: list[InstanceStartRequest]
 
 
 @router.post("/instances/batch/start")
@@ -423,11 +420,9 @@ async def stop_all_instances():
 # Proxy (Forward requests to backend instances)
 # ===========================================================================
 
-import httpx
-
 
 @router.api_route("/proxy/{inst_id}/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
-async def proxy_to_instance(inst_id: str, path: str, body: Optional[dict] = None):
+async def proxy_to_instance(inst_id: str, path: str, body: dict | None = None):
     """Proxy request to an instance backend (e.g., /api/proxy/inst-abc/v1/chat/completions)."""
     inst = _mgr().get_instance(inst_id)
     if not inst:
@@ -466,8 +461,8 @@ async def export_config():
 
 
 class ImportRequest(BaseModel):
-    config: Optional[Dict[str, Any]] = None
-    presets: Optional[Dict[str, Any]] = None
+    config: dict[str, Any] | None = None
+    presets: dict[str, Any] | None = None
     overwrite: bool = False
 
 
@@ -495,7 +490,7 @@ async def import_config(body: ImportRequest):
 # ===========================================================================
 
 @router.post("/instances/{inst_id}/tags")
-async def add_instance_tags(inst_id: str, tags: Dict[str, str]):
+async def add_instance_tags(inst_id: str, tags: dict[str, str]):
     """Add tags to an instance."""
     inst = _mgr().get_instance(inst_id)
     if not inst:
@@ -567,7 +562,7 @@ class CreateAlertRuleRequest(BaseModel):
     threshold: float
     duration_seconds: int = 60
     cooldown_seconds: int = 300
-    notify_channels: List[str] = ["log"]
+    notify_channels: list[str] = ["log"]
     message_template: str = ""
 
 
@@ -607,7 +602,7 @@ async def delete_alert_rule(rule_id: str):
 
 
 @router.get("/alerts")
-async def list_alerts(status: Optional[str] = None):
+async def list_alerts(status: str | None = None):
     """List active/resolved alerts."""
     return {"alerts": [a.model_dump() for a in _alerts().list_alerts(status)]}
 
@@ -675,16 +670,16 @@ async def usage_stats_hourly(days: int = Query(default=7, ge=1, le=30)):
 # ===========================================================================
 
 class AuditLogQuery(BaseModel):
-    action: Optional[str] = None
-    target_type: Optional[str] = None
+    action: str | None = None
+    target_type: str | None = None
     limit: int = 100
     offset: int = 0
 
 
 @router.get("/audit")
 async def list_audit_logs(
-    action: Optional[str] = None,
-    target_type: Optional[str] = None,
+    action: str | None = None,
+    target_type: str | None = None,
     limit: int = Query(default=100, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
 ):
@@ -750,8 +745,8 @@ async def delete_report(report_id: str):
 
 # Batches
 class BatchRequest(BaseModel):
-    models: List[str]
-    backends: List[str]
+    models: list[str]
+    backends: list[str]
     num_iterations: int = 3
     timeout_seconds: int = 120
 

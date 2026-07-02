@@ -1,8 +1,9 @@
 """Signal-tracing wrapper for vllm api_server startup debugging."""
+import os
 import signal
 import sys
 import time
-import os
+
 
 def _handler(signum, frame):
     sig_name = signal.Signals(signum).name

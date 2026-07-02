@@ -5,8 +5,8 @@ from pathlib import Path
 from inferx.benchmark import (
     BenchmarkConfig,
     BenchmarkResult,
-    BenchmarkReport,
-    BenchmarkExecutor,
+    BatchBenchmarkReport,
+    BenchmarkManager,
     GPUMonitor,
 )
 
@@ -56,30 +56,30 @@ class TestBenchmarkResult:
         assert result.error == "Connection refused"
 
 
-class TestBenchmarkReport:
+class TestBatchBenchmarkReport:
     def test_report_creation(self):
-        report = BenchmarkReport(
+        report = BatchBenchmarkReport(
             id="bench-123",
             timestamp="2026-07-01T12:00:00",
-            config=BenchmarkConfig(backend="vllm", model="test"),
+            config={"models": ["test"], "backends": ["vllm"], "iterations": 3},
         )
         assert report.id == "bench-123"
         assert len(report.results) == 0
 
 
-class TestBenchmarkExecutor:
-    def test_executor_init(self, tmp_path):
-        executor = BenchmarkExecutor(tmp_path)
-        assert executor._data_dir == tmp_path
+class TestBenchmarkManager:
+    def test_manager_init(self, tmp_path):
+        manager = BenchmarkManager(tmp_path)
+        assert manager._data_dir == tmp_path
 
     def test_list_reports_empty(self, tmp_path):
-        executor = BenchmarkExecutor(tmp_path)
-        reports = executor.list_reports()
+        manager = BenchmarkManager(tmp_path)
+        reports = manager.list_reports()
         assert len(reports) == 0
 
     def test_delete_nonexistent_report(self, tmp_path):
-        executor = BenchmarkExecutor(tmp_path)
-        result = executor.delete_report("nonexistent")
+        manager = BenchmarkManager(tmp_path)
+        result = manager.delete_report("nonexistent")
         assert result is False
 
 

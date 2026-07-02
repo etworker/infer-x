@@ -6,7 +6,7 @@ import re
 import shutil
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 class Backend(ABC):
@@ -19,24 +19,24 @@ class Backend(ABC):
         port: int,
         host: str,
         log_file: str,
-        params: Dict[str, Any],
-        extra_args: List[str],
-    ) -> List[str]:
+        params: dict[str, Any],
+        extra_args: list[str],
+    ) -> list[str]:
         """Build the command line arguments for the inference server."""
         pass
 
     @abstractmethod
-    def get_env(self, binary_path: str) -> Dict[str, str]:
+    def get_env(self, binary_path: str) -> dict[str, str]:
         """Get environment variables needed for the backend."""
         pass
 
     @abstractmethod
-    def get_model_paths(self, model_dir: Path) -> List[Dict[str, Any]]:
+    def get_model_paths(self, model_dir: Path) -> list[dict[str, Any]]:
         """Discover available models in the model directory."""
         pass
 
     @staticmethod
-    def _guess_family(name: str) -> Optional[str]:
+    def _guess_family(name: str) -> str | None:
         """Guess model family from filename."""
         name_lower = name.lower()
         for family in ["qwen", "gemma", "llama", "mistral", "phi", "deepseek", "yi", "baichuan"]:
@@ -45,7 +45,7 @@ class Backend(ABC):
         return None
 
     @staticmethod
-    def _guess_quantization(name: str) -> Optional[str]:
+    def _guess_quantization(name: str) -> str | None:
         """Guess quantization from filename."""
         m = re.search(r"(Q[0-9]+_[A-Z0-9]+|F16|F32|BF16|IQ[0-9]+_[A-Z0-9]+)", name, re.IGNORECASE)
         return m.group(1).upper() if m else None
@@ -54,13 +54,13 @@ class Backend(ABC):
 def get_backend(backend_type: str) -> Backend:
     """Factory function to get backend instance."""
     from .llamacpp import LlamaCppBackend
-    from .vllm import VLLMBackend
-    from .sglang import SGLangBackend
-    from .tgi import TGIBackend
-    from .ollama import OllamaBackend
-    from .tensorrt_llm import TensorRTLLMBackend
     from .lmdeploy import LMDeployBackend
+    from .ollama import OllamaBackend
     from .openvino import OpenVINOBackend
+    from .sglang import SGLangBackend
+    from .tensorrt_llm import TensorRTLLMBackend
+    from .tgi import TGIBackend
+    from .vllm import VLLMBackend
 
     backends = {
         "llamacpp": LlamaCppBackend,
@@ -155,7 +155,7 @@ def check_backend_installed(backend_type: str) -> bool:
     return False
 
 
-def get_all_backends_status() -> List[Dict[str, Any]]:
+def get_all_backends_status() -> list[dict[str, Any]]:
     """Get status of all backends."""
     backends_info = [
         {
