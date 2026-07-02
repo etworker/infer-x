@@ -1211,9 +1211,34 @@ async function renderBenchmark() {
       <div id="bench-active-body"></div>
     </div>
 
-    <!-- History -->
+    <!-- Batch History -->
     <div class="card">
-      <h3 style="margin-bottom:16px">Benchmark History</h3>
+      <h3 style="margin-bottom:16px">Batch History</h3>
+      <div id="bench-batches-body">
+        ${(batches.batches || []).length === 0 ? '<div style="text-align:center;color:var(--text2);padding:24px">No batch runs</div>' : ''}
+        ${(batches.batches || []).map(b => {
+          const progress = b.total_tasks > 0 ? Math.round(b.completed_tasks / b.total_tasks * 100) : 0;
+          return `
+          <div style="padding:12px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+            <div>
+              <span style="font-weight:500">${b.batch_id}</span>
+              <span class="badge badge-${b.status === 'completed' ? 'running' : b.status === 'failed' ? 'error' : 'starting'}" style="margin-left:8px">${b.status}</span>
+              <span style="color:var(--text2);font-size:12px;margin-left:8px">${b.completed_tasks || 0}/${b.total_tasks || 0} (${progress}%)</span>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <span style="font-size:12px;color:var(--text2)">${b.started_at ? new Date(b.started_at).toLocaleString() : ''}</span>
+              ${b.status === 'running' || b.status === 'pending' ? `<button class="btn-danger btn-sm" onclick="cancelBatch('${b.batch_id}')">Stop</button>` : ''}
+              <button class="btn-ghost btn-sm" onclick="rerunBatch('${b.batch_id}')">Rerun</button>
+              <button class="btn-danger btn-sm" onclick="deleteBatch('${b.batch_id}')">Delete</button>
+            </div>
+          </div>
+        `}).join('')}
+      </div>
+    </div>
+
+    <!-- Report History -->
+    <div class="card">
+      <h3 style="margin-bottom:16px">Reports</h3>
       <div id="bench-history-body">
         ${reports.reports.length === 0 ? '<div style="text-align:center;color:var(--text2);padding:24px">No benchmark reports</div>' : ''}
         ${reports.reports.map(r => `
@@ -1362,6 +1387,45 @@ async function deleteReport(reportId) {
   try {
     await api('/benchmark/reports/' + reportId, { method: 'DELETE' });
     toast('Report deleted');
+    renderBenchmark();
+  } catch (e) { toast(e.message, false); }
+}
+
+async function cancelBatch(batchId) {
+  if (!confirm('Stop this benchmark batch?')) return;
+  try {
+    await api('/benchmark/batches/' + batchId + '/cancel', { method: 'POST' });
+    toast('Batch cancelled');
+    renderBenchmark();
+  } catch (e) { toast(e.message, false); }
+}
+
+async function rerunBatch(batchId) {
+  // Get batch info and rerun with same config
+  try {
+    const batch = await api('/benchmark/batches/' + batchId);
+    if (!batch.models || !batch.backends) {
+      toast('Cannot rerun: missing config', false);
+      return;
+    }
+    const body = {
+      models: batch.models,
+      backends: batch.backends,
+      num_iterations: 3,
+      warmup_iterations: 1,
+      timeout_seconds: 120,
+    };
+    const result = await api('/benchmark/batches', { method: 'POST', body: JSON.stringify(body) });
+    toast('Batch rerun started: ' + result.batch_id);
+    renderBenchmark();
+  } catch (e) { toast(e.message, false); }
+}
+
+async function deleteBatch(batchId) {
+  if (!confirm('Delete this batch record?')) return;
+  try {
+    await api('/benchmark/batches/' + batchId, { method: 'DELETE' });
+    toast('Batch deleted');
     renderBenchmark();
   } catch (e) { toast(e.message, false); }
 }
