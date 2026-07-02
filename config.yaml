@@ -2,11 +2,11 @@ config:
   model_dir: ~/models
   default_backend: llamacpp
   llama_server_bin: /home/ec2-user/llama.cpp/build/bin/llama-server
-  vllm_server_bin: python -m vllm.entrypoints.openai.api_server
-  sglang_server_bin: python -m sglang.launch_server
+  vllm_server_bin: python3.12 -m vllm.entrypoints.openai.api_server
+  sglang_server_bin: python3.12 -m sglang.launch_server
   tgi_bin: text-generation-launcher
   ollama_bin: ollama
-  tensorrt_llm_bin: python -m tensorrt_llm.commands.tritonserver
+  tensorrt_llm_bin: python3.12 -m tensorrt_llm.commands.tritonserver
   lmdeploy_bin: lmdeploy serve api_server
   openvino_bin: ovms
   port_range_start: 8080

@@ -31,7 +31,6 @@ class VLLMBackend(Backend):
             "--model", str(model_path),
             "--host", host,
             "--port", str(port),
-            "--log-file", str(log_file),
         ])
 
         if params.get("tensor_parallel_size") and params["tensor_parallel_size"] > 1:
