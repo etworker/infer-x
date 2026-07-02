@@ -103,3 +103,11 @@ config:
 ## 许可证
 
 MIT License - 详见 [LICENSE](LICENSE)
+
+## GPU Compatibility
+
+| Engine | T4 (SM 7.5) | A100 (SM 8.0) | H100 (SM 9.0) |
+|--------|-------------|---------------|---------------|
+| llama.cpp | ✅ | ✅ | ✅ |
+| vLLM | ✅ | ✅ | ✅ |
+| SGLang | ❌ | ✅ | ✅ |
