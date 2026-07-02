@@ -22,8 +22,11 @@ class SGLangBackend(Backend):
     ) -> List[str]:
         binary = params.get("binary", "python -m sglang.launch_server")
 
+        # Prepend environment variable to command
+        env_prefix = "SGLANG_KERNEL_DISABLE_JIT=1 SGL_KERNEL_DISABLE_JIT=1"
+
         if binary.startswith("python"):
-            cmd = binary.split()
+            cmd = [binary.split()[0], "-m", binary.split()[-1]]
         else:
             cmd = [binary]
 
@@ -46,7 +49,10 @@ class SGLangBackend(Backend):
         return cmd
 
     def get_env(self, binary_path: str) -> Dict[str, str]:
-        return {}
+        return {
+            "SGLANG_KERNEL_DISABLE_JIT": "1",
+            "SGL_KERNEL_DISABLE_JIT": "1",
+        }
 
     def get_model_paths(self, model_dir: Path) -> List[Dict[str, Any]]:
         """Discover HuggingFace model directories."""
