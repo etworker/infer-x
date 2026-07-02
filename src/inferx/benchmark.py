@@ -354,7 +354,7 @@ class BenchmarkManager:
 
             for scenario in scenarios:
                 for _ in range(config.num_iterations):
-                    result = await self._run_scenario(backend, model, port, scenario)
+                    result = await self._run_scenario(backend, model, port, scenario, config.timeout_seconds)
                     report.scenario_results.append(result.model_dump())
 
             # Calculate averages
@@ -380,7 +380,7 @@ class BenchmarkManager:
 
         return report
 
-    async def _run_scenario(self, backend: str, model: str, port: int, scenario: Dict) -> BenchmarkResult:
+    async def _run_scenario(self, backend: str, model: str, port: int, scenario: Dict, timeout: int = 120) -> BenchmarkResult:
         result = BenchmarkResult(scenario=scenario["name"])
         try:
             url = f"http://localhost:{port}"
@@ -388,7 +388,7 @@ class BenchmarkManager:
 
             gpu_before = self._gpu_monitor.get_gpu_memory_used()
 
-            async with httpx.AsyncClient(timeout=config.timeout_seconds if hasattr(self, '_config') else 120) as client:
+            async with httpx.AsyncClient(timeout=timeout) as client:
                 if backend in ("vllm", "sglang", "tgi"):
                     endpoint = f"{url}/v1/chat/completions"
                 elif backend == "ollama":
