@@ -53,8 +53,8 @@ def init_routes(config: ConfigManager, manager: InstanceManager) -> None:
     _usage_tracker = UsageTracker(data_dir)
     _audit_logger = AuditLogger(data_dir)
 
-    # Initialize benchmark web manager with manager
-    _bench_web().set_manager(manager)
+    # Initialize benchmark manager with manager
+    _bench().set_manager(manager)
 
 
 def _mgr() -> InstanceManager:
@@ -697,188 +697,85 @@ async def get_audit_entry(entry_id: str):
 # Benchmark
 # ===========================================================================
 
-_benchmark_executor = None
+_benchmark_manager = None
 
 
 def _bench():
-    global _benchmark_executor
-    if _benchmark_executor is None:
-        from .benchmark import BenchmarkExecutor
+    global _benchmark_manager
+    if _benchmark_manager is None:
+        from .benchmark import BenchmarkManager
         data_dir = Path(__file__).parent.parent.parent / "data" / "benchmarks"
-        _benchmark_executor = BenchmarkExecutor(data_dir)
-    return _benchmark_executor
+        _benchmark_manager = BenchmarkManager(data_dir)
+        if _manager:
+            _benchmark_manager.set_manager(_manager)
+    return _benchmark_manager
 
 
-class BenchmarkRequest(BaseModel):
-    backend: str
-    model: str
-    host: str = "localhost"
-    port: int = 8080
-    scenarios: Optional[List[Dict[str, Any]]] = None
-    num_iterations: int = 3
-    warmup_iterations: int = 1
-    timeout_seconds: int = 120
-
-
+# Reports
 @router.get("/benchmark/reports")
-async def list_benchmark_reports():
-    """List all benchmark reports."""
+async def list_reports():
     return {"reports": _bench().list_reports()}
 
-
 @router.get("/benchmark/reports/{report_id}")
-async def get_benchmark_report(report_id: str):
-    """Get a specific benchmark report."""
+async def get_report(report_id: str):
     report = _bench().get_report(report_id)
     if not report:
-        raise HTTPException(404, f"Report not found: {report_id}")
+        raise HTTPException(404, "Report not found")
     return report.model_dump()
 
-
 @router.delete("/benchmark/reports/{report_id}")
-async def delete_benchmark_report(report_id: str):
-    """Delete a benchmark report."""
+async def delete_report(report_id: str):
     ok = _bench().delete_report(report_id)
     if not ok:
-        raise HTTPException(404, f"Report not found: {report_id}")
+        raise HTTPException(404, "Report not found")
     return {"success": True}
 
-
-@router.post("/benchmark/run")
-async def run_benchmark(body: BenchmarkRequest):
-    """Run a benchmark test."""
-    from .benchmark import BenchmarkConfig
-
-    config = BenchmarkConfig(
-        backend=body.backend,
-        model=body.model,
-        host=body.host,
-        port=body.port,
-        num_iterations=body.num_iterations,
-        warmup_iterations=body.warmup_iterations,
-        timeout_seconds=body.timeout_seconds,
-    )
-
-    if body.scenarios:
-        config.scenarios = body.scenarios
-
-    try:
-        report = await _bench().run_benchmark(config)
-        return report.model_dump()
-    except Exception as e:
-        raise HTTPException(500, f"Benchmark failed: {str(e)}")
-
-
-@router.get("/benchmark/gpu")
-async def benchmark_gpu_info():
-    """Get GPU information for benchmark."""
-    from .benchmark import GPUMonitor
-    monitor = GPUMonitor()
-    return monitor.get_gpu_info()
-
-
-@router.post("/benchmark/compare")
-async def compare_benchmarks(report_ids: List[str]):
-    """Compare multiple benchmark reports."""
-    reports = []
-    for report_id in report_ids:
-        report = _bench().get_report(report_id)
-        if report:
-            reports.append(report.model_dump())
-
-    if not reports:
-        raise HTTPException(404, "No valid reports found")
-
-    # Build comparison
-    comparison = {
-        "reports": reports,
-        "metrics": {
-            "load_time": {r["id"]: r.get("avg_load_time_ms", 0) for r in reports},
-            "ttft": {r["id"]: r.get("avg_time_to_first_token_ms", 0) for r in reports},
-            "tokens_per_second": {r["id"]: r.get("avg_tokens_per_second", 0) for r in reports},
-            "gpu_memory": {r["id"]: r.get("max_gpu_memory_used_mb", 0) for r in reports},
-        },
-    }
-
-    return comparison
-
-
-# ===========================================================================
-# Batch Benchmark
-# ===========================================================================
-
-_benchmark_web = None
-
-
-def _bench_web():
-    global _benchmark_web
-    if _benchmark_web is None:
-        from .benchmark_web import BenchmarkWebManager
-        data_dir = Path(__file__).parent.parent.parent / "data" / "benchmarks"
-        _benchmark_web = BenchmarkWebManager(data_dir)
-        # Set manager for instance lifecycle management
-        if _manager:
-            _benchmark_web.set_manager(_manager)
-    return _benchmark_web
-
-
-class BatchBenchmarkRequest(BaseModel):
+# Batches
+class BatchRequest(BaseModel):
     models: List[str]
     backends: List[str]
-    scenarios: Optional[List[Dict[str, Any]]] = None
     num_iterations: int = 3
-    warmup_iterations: int = 1
     timeout_seconds: int = 120
 
-
 @router.get("/benchmark/batches")
-async def list_benchmark_batches():
-    """List all batch benchmark runs."""
-    return {"batches": _bench_web().list_batches()}
-
+async def list_batches():
+    return {"batches": _bench().list_batches()}
 
 @router.get("/benchmark/batches/{batch_id}")
-async def get_batch_progress(batch_id: str):
-    """Get progress of a batch benchmark run."""
-    progress = _bench_web().get_batch_progress(batch_id)
+async def get_batch(batch_id: str):
+    progress = _bench().get_batch_progress(batch_id)
     if not progress:
-        raise HTTPException(404, f"Batch not found: {batch_id}")
+        raise HTTPException(404, "Batch not found")
     return progress.model_dump()
 
-
 @router.post("/benchmark/batches")
-async def start_batch_benchmark(body: BatchBenchmarkRequest):
-    """Start a batch benchmark run."""
-    from .benchmark_web import BatchBenchmarkConfig
-
+async def start_batch(body: BatchRequest):
+    from .benchmark import BatchBenchmarkConfig
     config = BatchBenchmarkConfig(
         models=body.models,
         backends=body.backends,
         num_iterations=body.num_iterations,
-        warmup_iterations=body.warmup_iterations,
         timeout_seconds=body.timeout_seconds,
     )
-
-    if body.scenarios:
-        config.scenarios = body.scenarios
-
-    batch_id = await _bench_web().start_batch(config)
+    batch_id = await _bench().start_batch(config)
     return {"batch_id": batch_id, "status": "started"}
 
-
 @router.post("/benchmark/batches/{batch_id}/cancel")
-async def cancel_batch_benchmark(batch_id: str):
-    """Cancel a batch benchmark run."""
-    ok = _bench_web().cancel_batch(batch_id)
+async def cancel_batch(batch_id: str):
+    ok = _bench().cancel_batch(batch_id)
     if not ok:
-        raise HTTPException(404, f"Batch not found: {batch_id}")
+        raise HTTPException(404, "Batch not found")
     return {"success": True}
-
 
 @router.delete("/benchmark/batches/{batch_id}")
-async def delete_batch_benchmark(batch_id: str):
-    """Delete a batch benchmark record."""
-    ok = _bench_web().delete_batch(batch_id)
+async def delete_batch(batch_id: str):
+    ok = _bench().delete_batch(batch_id)
     if not ok:
-        raise HTTPException(404, f"Batch not found: {batch_id}")
+        raise HTTPException(404, "Batch not found")
     return {"success": True}
+
+# GPU info
+@router.get("/benchmark/gpu")
+async def gpu_info():
+    from .benchmark import GPUMonitor
+    return GPUMonitor().get_gpu_info()

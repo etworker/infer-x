@@ -1,4 +1,4 @@
-"""Inference benchmark module - real performance testing via manager."""
+"""Inference benchmark module - batch testing with summary reports."""
 
 from __future__ import annotations
 
@@ -32,39 +32,79 @@ class BenchmarkConfig(BaseModel):
         {"name": "long_prompt", "prompt": "Write a detailed analysis of AI.", "max_tokens": 200},
     ])
     num_iterations: int = 3
-    warmup_iterations: int = 1
     timeout_seconds: int = 120
 
 
 class BenchmarkResult(BaseModel):
     """Result of a single benchmark run."""
     scenario: str
-    prompt: str = ""
     prompt_tokens: int = 0
     completion_tokens: int = 0
-    total_tokens: int = 0
-    load_time_ms: float = 0.0
-    time_to_first_token_ms: float = 0.0
     total_time_ms: float = 0.0
+    time_to_first_token_ms: float = 0.0
     tokens_per_second: float = 0.0
     gpu_memory_used_mb: float = 0.0
-    gpu_memory_total_mb: float = 0.0
     success: bool = True
     error: Optional[str] = None
 
 
-class BenchmarkReport(BaseModel):
-    """Complete benchmark report."""
+class SingleBenchmarkResult(BaseModel):
+    """Result for one model+backend combination."""
+    model: str
+    backend: str
+    results: List[BenchmarkResult] = []
+    avg_tokens_per_second: float = 0.0
+    avg_ttft_ms: float = 0.0
+    max_gpu_memory_mb: float = 0.0
+    success: bool = True
+    error: Optional[str] = None
+
+
+class BatchBenchmarkReport(BaseModel):
+    """Complete batch benchmark report with all results."""
     id: str
     timestamp: str
-    config: BenchmarkConfig
-    results: List[BenchmarkResult] = []
-    avg_load_time_ms: float = 0.0
-    avg_time_to_first_token_ms: float = 0.0
-    avg_tokens_per_second: float = 0.0
-    max_gpu_memory_used_mb: float = 0.0
-    gpu_info: Optional[Dict[str, Any]] = None
+    config: Dict[str, Any]  # {models, backends, iterations, scenarios}
+    results: List[SingleBenchmarkReport] = []
     duration_seconds: float = 0.0
+    # Summary
+    best_tokens_per_second: Optional[Dict[str, Any]] = None
+    best_ttft: Optional[Dict[str, Any]] = None
+    lowest_memory: Optional[Dict[str, Any]] = None
+
+
+class SingleBenchmarkReport(BaseModel):
+    """Report for a single model+backend combination."""
+    model: str
+    backend: str
+    scenario_results: List[Dict[str, Any]] = []
+    avg_tokens_per_second: float = 0.0
+    avg_ttft_ms: float = 0.0
+    max_gpu_memory_mb: float = 0.0
+    total_time_seconds: float = 0.0
+    success: bool = True
+    error: Optional[str] = None
+
+
+class BatchBenchmarkConfig(BaseModel):
+    """Configuration for batch benchmark testing."""
+    models: List[str]
+    backends: List[str]
+    num_iterations: int = 3
+    timeout_seconds: int = 120
+
+
+class BatchBenchmarkProgress(BaseModel):
+    """Progress tracking for batch benchmark."""
+    batch_id: str
+    status: str  # pending, running, completed, failed
+    total_tasks: int = 0
+    completed_tasks: int = 0
+    current_model: Optional[str] = None
+    current_backend: Optional[str] = None
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
+    report_id: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -95,22 +135,20 @@ class GPUMonitor:
                 if isinstance(name, bytes):
                     name = name.decode()
                 gpus.append({
-                    "index": i,
-                    "name": name,
+                    "index": i, "name": name,
                     "total_mb": mem.total // (1024 * 1024),
                     "used_mb": mem.used // (1024 * 1024),
-                    "free_mb": mem.free // (1024 * 1024),
                 })
             return {"available": True, "count": count, "gpus": gpus}
         except Exception:
             return {"available": False}
 
-    def get_gpu_memory_used(self, device_index: int = 0) -> float:
+    def get_gpu_memory_used(self) -> float:
         if not self._nvml_available:
             return 0.0
         import pynvml
         try:
-            handle = pynvml.nvmlDeviceGetHandleBy_index(device_index)
+            handle = pynvml.nvmlDeviceGetHandleByIndex(0)
             mem = pynvml.nvmlDeviceGetMemoryInfo(handle)
             return mem.used / (1024 * 1024)
         except Exception:
@@ -118,88 +156,174 @@ class GPUMonitor:
 
 
 # ---------------------------------------------------------------------------
-# Benchmark Executor
+# Benchmark Manager
 # ---------------------------------------------------------------------------
 
-class BenchmarkExecutor:
-    """Execute benchmark tests with real inference via manager."""
+class BenchmarkManager:
+    """Manages benchmark execution with batch testing and summary reports."""
 
     def __init__(self, data_dir: Path):
         self._data_dir = data_dir
         self._data_dir.mkdir(parents=True, exist_ok=True)
         self._gpu_monitor = GPUMonitor()
-        self._reports: Dict[str, BenchmarkReport] = {}
-        self._manager = None
+        self._manager = None  # InstanceManager
+        self._active_batches: Dict[str, BatchBenchmarkProgress] = {}
+        self._batch_tasks: Dict[str, asyncio.Task] = {}
 
     def set_manager(self, manager):
-        """Set the instance manager for starting/stopping instances."""
         self._manager = manager
+
+    # ---- Reports ----
 
     def list_reports(self) -> List[Dict[str, Any]]:
         reports = []
-        for report_file in self._data_dir.glob("benchmark_*.json"):
+        for f in self._data_dir.glob("report_*.json"):
             try:
-                with open(report_file, "r") as f:
-                    data = json.load(f)
+                with open(f) as fh:
+                    data = json.load(fh)
                 reports.append({
-                    "id": data.get("id"),
-                    "timestamp": data.get("timestamp"),
-                    "backend": data.get("config", {}).get("backend"),
-                    "model": data.get("config", {}).get("model"),
-                    "avg_tokens_per_second": data.get("avg_tokens_per_second"),
-                    "duration_seconds": data.get("duration_seconds"),
+                    "id": data["id"],
+                    "timestamp": data["timestamp"],
+                    "models": data.get("config", {}).get("models", []),
+                    "backends": data.get("config", {}).get("backends", []),
+                    "total_results": len(data.get("results", [])),
+                    "duration_seconds": data.get("duration_seconds", 0),
                 })
             except Exception:
                 continue
         return sorted(reports, key=lambda x: x.get("timestamp", ""), reverse=True)
 
-    def get_report(self, report_id: str) -> Optional[BenchmarkReport]:
-        if report_id in self._reports:
-            return self._reports[report_id]
-        report_file = self._data_dir / f"benchmark_{report_id}.json"
-        if report_file.exists():
-            with open(report_file, "r") as f:
-                data = json.load(f)
-            report = BenchmarkReport(**data)
-            self._reports[report_id] = report
-            return report
+    def get_report(self, report_id: str) -> Optional[BatchBenchmarkReport]:
+        f = self._data_dir / f"report_{report_id}.json"
+        if f.exists():
+            with open(f) as fh:
+                data = json.load(fh)
+            return BatchBenchmarkReport(**data)
         return None
 
     def delete_report(self, report_id: str) -> bool:
-        report_file = self._data_dir / f"benchmark_{report_id}.json"
-        if report_file.exists():
-            report_file.unlink()
-            self._reports.pop(report_id, None)
+        f = self._data_dir / f"report_{report_id}.json"
+        if f.exists():
+            f.unlink()
             return True
         return False
 
-    async def run_benchmark(self, config: BenchmarkConfig) -> BenchmarkReport:
-        """Run a real benchmark against a running inference server."""
-        report_id = f"bench-{uuid.uuid4().hex[:8]}"
-        report = BenchmarkReport(
-            id=report_id,
-            timestamp=datetime.now().isoformat(),
-            config=config,
-        )
+    # ---- Batches ----
 
+    def list_batches(self) -> List[Dict[str, Any]]:
+        batches = []
+        for f in self._data_dir.glob("batch_*.json"):
+            try:
+                with open(f) as fh:
+                    data = json.load(fh)
+                batches.append({
+                    "batch_id": data["batch_id"],
+                    "status": data["status"],
+                    "total_tasks": data.get("total_tasks"),
+                    "completed_tasks": data.get("completed_tasks"),
+                    "current_model": data.get("current_model"),
+                    "current_backend": data.get("current_backend"),
+                    "started_at": data.get("started_at"),
+                    "completed_at": data.get("completed_at"),
+                    "report_id": data.get("report_id"),
+                })
+            except Exception:
+                continue
+        # Also include active batches
+        for bid, progress in self._active_batches.items():
+            if not any(b["batch_id"] == bid for b in batches):
+                batches.append(progress.model_dump())
+        return sorted(batches, key=lambda x: x.get("started_at", ""), reverse=True)
+
+    def get_batch_progress(self, batch_id: str) -> Optional[BatchBenchmarkProgress]:
+        if batch_id in self._active_batches:
+            return self._active_batches[batch_id]
+        f = self._data_dir / f"batch_{batch_id}.json"
+        if f.exists():
+            with open(f) as fh:
+                data = json.load(fh)
+            return BatchBenchmarkProgress(**data)
+        return None
+
+    async def start_batch(self, config: BatchBenchmarkConfig) -> str:
+        batch_id = uuid.uuid4().hex[:8]
+        tasks = []
+        for model in config.models:
+            for backend in config.backends:
+                tasks.append({"model": model, "backend": backend})
+
+        progress = BatchBenchmarkProgress(
+            batch_id=batch_id,
+            status="pending",
+            total_tasks=len(tasks),
+            completed_tasks=0,
+            models=config.models,
+            backends=config.backends,
+            started_at=datetime.now().isoformat(),
+        )
+        self._active_batches[batch_id] = progress
+        self._save_batch(progress)
+
+        task = asyncio.create_task(self._run_batch(batch_id, config, tasks))
+        self._batch_tasks[batch_id] = task
+        return batch_id
+
+    async def _run_batch(self, batch_id: str, config: BatchBenchmarkConfig, tasks: List[Dict]):
+        progress = self._active_batches.get(batch_id)
+        if not progress:
+            return
+
+        progress.status = "running"
+        results = []
         start_time = time.time()
-        report.gpu_info = self._gpu_monitor.get_gpu_info()
+
+        for i, task_info in enumerate(tasks):
+            model = task_info["model"]
+            backend = task_info["backend"]
+
+            progress.current_model = model
+            progress.current_backend = backend
+            self._save_batch(progress)
+
+            try:
+                result = await self._run_single(model, backend, config)
+                results.append(result)
+            except Exception as e:
+                results.append(SingleBenchmarkReport(
+                    model=model, backend=backend, success=False, error=str(e)
+                ))
+
+            progress.completed_tasks = i + 1
+            self._save_batch(progress)
+
+        # Generate summary report
+        report_id = f"report-{uuid.uuid4().hex[:8]}"
+        report = self._generate_report(report_id, config, results, time.time() - start_time)
+        self._save_report(report)
+
+        progress.status = "completed"
+        progress.completed_at = datetime.now().isoformat()
+        progress.report_id = report_id
+        self._save_batch(progress)
+
+    async def _run_single(self, model: str, backend: str, config: BatchBenchmarkConfig) -> SingleBenchmarkReport:
+        """Run benchmark for a single model+backend."""
+        report = SingleBenchmarkReport(model=model, backend=backend)
 
         instance_id = None
         try:
-            # Start instance via manager if available
+            # Start instance via manager
             if self._manager:
-                instance_info = await self._manager.start_instance(
+                inst = await self._manager.start_instance(
                     InstanceStartRequest(
-                        model=config.model,
-                        backend=BackendType(config.backend),
-                        port=config.port,
+                        model=model,
+                        backend=BackendType(backend),
                     )
                 )
-                instance_id = instance_info.id
+                instance_id = inst.id
 
-                # Wait for instance to be ready
-                for _ in range(60):
+                # Wait for ready
+                for _ in range(120):
                     await asyncio.sleep(1)
                     inst = self._manager.get_instance(instance_id)
                     if inst and inst.status == InstanceStatus.running:
@@ -207,173 +331,170 @@ class BenchmarkExecutor:
                     if inst and inst.status == InstanceStatus.error:
                         raise RuntimeError("Instance failed to start")
 
-            # Warmup
-            for _ in range(config.warmup_iterations):
-                await self._execute_scenario(config, config.scenarios[0] if config.scenarios else {})
-
             # Run scenarios
-            for scenario in config.scenarios:
-                scenario_results = []
-                for i in range(config.num_iterations):
-                    result = await self._execute_scenario(config, scenario)
-                    scenario_results.append(result)
+            scenarios = [
+                {"name": "short", "prompt": "Hello", "max_tokens": 50},
+                {"name": "medium", "prompt": "Explain AI.", "max_tokens": 100},
+                {"name": "long", "prompt": "Write a detailed analysis.", "max_tokens": 200},
+            ]
 
-                if scenario_results:
-                    avg_result = self._aggregate_results(scenario_results)
-                    report.results.append(avg_result)
+            port = 8080
+            if self._manager:
+                inst = self._manager.get_instance(instance_id)
+                if inst:
+                    port = inst.port
 
-            self._calculate_summary(report)
+            for scenario in scenarios:
+                for _ in range(config.num_iterations):
+                    result = await self._run_scenario(backend, model, port, scenario)
+                    report.scenario_results.append(result.model_dump())
+
+            # Calculate averages
+            successful = [r for r in report.scenario_results if r.get("success")]
+            if successful:
+                report.avg_tokens_per_second = sum(r["tokens_per_second"] for r in successful) / len(successful)
+                report.avg_ttft_ms = sum(r["time_to_first_token_ms"] for r in successful) / len(successful)
+                report.max_gpu_memory_mb = max(r["gpu_memory_used_mb"] for r in successful)
+                report.total_time_seconds = sum(r["total_time_ms"] for r in successful) / 1000
+
+            report.success = True
+
+        except Exception as e:
+            report.success = False
+            report.error = str(e)
 
         finally:
-            # Stop instance if we started it
             if self._manager and instance_id:
                 try:
                     await self._manager.stop_instance(instance_id)
                 except Exception:
                     pass
 
-        report.duration_seconds = time.time() - start_time
-        self._reports[report_id] = report
-        self._save_report(report)
-
         return report
 
-    async def _execute_scenario(
-        self,
-        config: BenchmarkConfig,
-        scenario: Dict[str, Any],
-    ) -> BenchmarkResult:
-        """Execute a single benchmark scenario."""
-        result = BenchmarkResult(
-            scenario=scenario.get("name", "unknown"),
-            prompt=scenario.get("prompt", ""),
-        )
-
+    async def _run_scenario(self, backend: str, model: str, port: int, scenario: Dict) -> BenchmarkResult:
+        result = BenchmarkResult(scenario=scenario["name"])
         try:
-            url = f"http://{config.host}:{config.port}"
-            payload = self._build_request(config, scenario)
+            url = f"http://localhost:{port}"
+            payload = self._build_request(backend, model, scenario)
 
-            async with httpx.AsyncClient(timeout=config.timeout_seconds) as client:
-                if config.backend in ("vllm", "sglang", "tgi"):
+            gpu_before = self._gpu_monitor.get_gpu_memory_used()
+
+            async with httpx.AsyncClient(timeout=config.timeout_seconds if hasattr(self, '_config') else 120) as client:
+                if backend in ("vllm", "sglang", "tgi"):
                     endpoint = f"{url}/v1/chat/completions"
-                elif config.backend == "ollama":
+                elif backend == "ollama":
                     endpoint = f"{url}/api/generate"
                 else:
                     endpoint = f"{url}/completion"
 
-                request_start = time.time()
+                start = time.time()
                 response = await client.post(endpoint, json=payload)
-                request_end = time.time()
+                end = time.time()
 
                 if response.status_code == 200:
                     data = response.json()
-                    parsed = self._parse_response(config.backend, data)
-
+                    parsed = self._parse_response(backend, data)
                     result.prompt_tokens = parsed.get("prompt_tokens", 0)
                     result.completion_tokens = parsed.get("completion_tokens", 0)
-                    result.total_tokens = result.prompt_tokens + result.completion_tokens
-                    result.total_time_ms = (request_end - request_start) * 1000
+                    result.total_time_ms = (end - start) * 1000
                     result.time_to_first_token_ms = result.total_time_ms * 0.3
-                    result.load_time_ms = (request_start - time.time()) * -1000
 
                     if result.total_time_ms > 0 and result.completion_tokens > 0:
                         result.tokens_per_second = (result.completion_tokens * 1000) / result.total_time_ms
-
                     result.success = True
                 else:
                     result.success = False
                     result.error = f"HTTP {response.status_code}"
 
-            gpu_memory_after = self._gpu_monitor.get_gpu_memory_used()
-            result.gpu_memory_used_mb = gpu_memory_after
+            result.gpu_memory_used_mb = self._gpu_monitor.get_gpu_memory_used()
 
-            gpu_info = self._gpu_monitor.get_gpu_info()
-            if gpu_info.get("gpus"):
-                result.gpu_memory_total_mb = gpu_info["gpus"][0].get("total_mb", 0)
-
-        except httpx.TimeoutException:
-            result.success = False
-            result.error = "Timeout"
         except Exception as e:
             result.success = False
             result.error = str(e)
 
         return result
 
-    def _build_request(self, config: BenchmarkConfig, scenario: Dict[str, Any]) -> Dict[str, Any]:
+    def _build_request(self, backend: str, model: str, scenario: Dict) -> Dict:
         prompt = scenario.get("prompt", "")
         max_tokens = scenario.get("max_tokens", 100)
-
-        if config.backend in ("vllm", "sglang", "tgi"):
-            return {
-                "model": config.model,
-                "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": max_tokens,
-                "temperature": 0.7,
-            }
-        elif config.backend == "ollama":
-            return {
-                "model": config.model,
-                "prompt": prompt,
-                "options": {"num_predict": max_tokens},
-            }
+        if backend in ("vllm", "sglang", "tgi"):
+            return {"model": model, "messages": [{"role": "user", "content": prompt}], "max_tokens": max_tokens}
+        elif backend == "ollama":
+            return {"model": model, "prompt": prompt, "options": {"num_predict": max_tokens}}
         else:
-            return {
-                "prompt": prompt,
-                "n_predict": max_tokens,
-                "temperature": 0.7,
-            }
+            return {"prompt": prompt, "n_predict": max_tokens}
 
-    def _parse_response(self, backend: str, data: Dict[str, Any]) -> Dict[str, Any]:
+    def _parse_response(self, backend: str, data: Dict) -> Dict:
         if backend in ("vllm", "sglang", "tgi"):
             choices = data.get("choices", [{}])
             if choices:
                 return {
-                    "text": choices[0].get("message", {}).get("content", ""),
                     "prompt_tokens": data.get("usage", {}).get("prompt_tokens", 0),
                     "completion_tokens": data.get("usage", {}).get("completion_tokens", 0),
                 }
         elif backend == "ollama":
-            return {
-                "text": data.get("response", ""),
-                "prompt_tokens": data.get("prompt_eval_count", 0),
-                "completion_tokens": data.get("eval_count", 0),
-            }
+            return {"prompt_tokens": data.get("prompt_eval_count", 0), "completion_tokens": data.get("eval_count", 0)}
         else:
-            return {
-                "text": data.get("content", ""),
-                "prompt_tokens": data.get("tokens_evaluated", 0),
-                "completion_tokens": data.get("tokens_predicted", 0),
-            }
-        return {"text": "", "prompt_tokens": 0, "completion_tokens": 0}
+            return {"prompt_tokens": data.get("tokens_evaluated", 0), "completion_tokens": data.get("tokens_predicted", 0)}
+        return {"prompt_tokens": 0, "completion_tokens": 0}
 
-    def _aggregate_results(self, results: List[BenchmarkResult]) -> BenchmarkResult:
-        successful = [r for r in results if r.success]
-        if not successful:
-            return results[0] if results else BenchmarkResult(scenario="failed")
+    def _generate_report(self, report_id: str, config: BatchBenchmarkConfig, results: List[SingleBenchmarkReport], duration: float) -> BatchBenchmarkReport:
+        successful = [r for r in results if r.success and r.avg_tokens_per_second > 0]
 
-        n = len(successful)
-        aggregated = successful[0].model_copy()
-        aggregated.load_time_ms = sum(r.load_time_ms for r in successful) / n
-        aggregated.time_to_first_token_ms = sum(r.time_to_first_token_ms for r in successful) / n
-        aggregated.total_time_ms = sum(r.total_time_ms for r in successful) / n
-        aggregated.tokens_per_second = sum(r.tokens_per_second for r in successful) / n
-        aggregated.gpu_memory_used_mb = max(r.gpu_memory_used_mb for r in successful)
-        return aggregated
+        # Find best performers
+        best_tps = None
+        best_ttft = None
+        lowest_mem = None
 
-    def _calculate_summary(self, report: BenchmarkReport):
-        if not report.results:
-            return
-        successful = [r for r in report.results if r.success]
-        if not successful:
-            return
-        n = len(successful)
-        report.avg_load_time_ms = sum(r.load_time_ms for r in successful) / n
-        report.avg_time_to_first_token_ms = sum(r.time_to_first_token_ms for r in successful) / n
-        report.avg_tokens_per_second = sum(r.tokens_per_second for r in successful) / n
-        report.max_gpu_memory_used_mb = max(r.gpu_memory_used_mb for r in successful)
+        if successful:
+            best_tps_item = max(successful, key=lambda x: x.avg_tokens_per_second)
+            best_tps = {"model": best_tps_item.model, "backend": best_tps_item.backend, "value": best_tps_item.avg_tokens_per_second}
 
-    def _save_report(self, report: BenchmarkReport):
-        report_file = self._data_dir / f"benchmark_{report.id}.json"
-        with open(report_file, "w") as f:
-            json.dump(report.model_dump(), f, indent=2, ensure_ascii=False)
+            best_ttft_item = min(successful, key=lambda x: x.avg_ttft_ms)
+            best_ttft = {"model": best_ttft_item.model, "backend": best_ttft_item.backend, "value": best_ttft_item.avg_ttft_ms}
+
+            lowest_mem_item = min(successful, key=lambda x: x.max_gpu_memory_mb)
+            lowest_mem = {"model": lowest_mem_item.model, "backend": lowest_mem_item.backend, "value": lowest_mem_item.max_gpu_memory_mb}
+
+        return BatchBenchmarkReport(
+            id=report_id,
+            timestamp=datetime.now().isoformat(),
+            config={"models": config.models, "backends": config.backends, "iterations": config.num_iterations},
+            results=results,
+            duration_seconds=duration,
+            best_tokens_per_second=best_tps,
+            best_ttft=best_ttft,
+            lowest_memory=lowest_mem,
+        )
+
+    def _save_batch(self, progress: BatchBenchmarkProgress):
+        f = self._data_dir / f"batch_{progress.batch_id}.json"
+        with open(f, "w") as fh:
+            json.dump(progress.model_dump(), fh, indent=2, ensure_ascii=False)
+
+    def _save_report(self, report: BatchBenchmarkReport):
+        f = self._data_dir / f"report_{report.id}.json"
+        with open(f, "w") as fh:
+            json.dump(report.model_dump(), fh, indent=2, ensure_ascii=False)
+
+    def cancel_batch(self, batch_id: str) -> bool:
+        if batch_id in self._batch_tasks:
+            task = self._batch_tasks[batch_id]
+            if not task.done():
+                task.cancel()
+        progress = self._active_batches.get(batch_id)
+        if progress:
+            progress.status = "cancelled"
+            self._save_batch(progress)
+            return True
+        return False
+
+    def delete_batch(self, batch_id: str) -> bool:
+        f = self._data_dir / f"batch_{batch_id}.json"
+        if f.exists():
+            f.unlink()
+            self._active_batches.pop(batch_id, None)
+            self._batch_tasks.pop(batch_id, None)
+            return True
+        return False
