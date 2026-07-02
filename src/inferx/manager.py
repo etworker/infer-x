@@ -414,9 +414,9 @@ class InstanceManager:
             port=port,
             host=host,
             pid=proc.pid,
-            ctx_size=params["ctx_size"],
-            n_gpu_layers=params["n_gpu_layers"],
-            n_parallel=params["n_parallel"],
+            ctx_size=params.get("ctx_size", 4096),
+            n_gpu_layers=params.get("n_gpu_layers", "auto"),
+            n_parallel=params.get("n_parallel", 1),
             started_at=time.strftime("%Y-%m-%dT%H:%M:%S"),
             extra_args=extra_args,
         )

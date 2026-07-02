@@ -247,9 +247,17 @@ class BenchmarkManager:
 
     async def start_batch(self, config: BatchBenchmarkConfig) -> str:
         batch_id = uuid.uuid4().hex[:8]
+        
+        # Filter models based on backend compatibility
         tasks = []
         for model in config.models:
             for backend in config.backends:
+                # Skip .gguf models for non-llamacpp backends
+                if backend != "llamacpp" and model.endswith(".gguf"):
+                    continue
+                # Skip HuggingFace models for llamacpp
+                if backend == "llamacpp" and not model.endswith(".gguf"):
+                    continue
                 tasks.append({"model": model, "backend": backend})
 
         progress = BatchBenchmarkProgress(
