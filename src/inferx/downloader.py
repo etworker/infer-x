@@ -159,11 +159,16 @@ class ModelDownloader:
 
     # ---- Auto-download safetensor for gguf models --------------------------
 
-    async def auto_download_safetensors(self, gguf_models: list) -> list:
-        """Auto-download safetensor versions for gguf models."""
+    async def auto_download_safetensors(self, gguf_models: list, source: str = "hf") -> list:
+        """Auto-download safetensor versions for gguf models.
+        
+        Args:
+            gguf_models: List of gguf model filenames
+            source: "hf" for HuggingFace, "ms" for ModelScope
+        """
         results = []
         
-        # Map gguf model names to HuggingFace repos
+        # Map gguf model names to model repos
         hf_model_map = {
             "qwen2.5": "Qwen/Qwen2.5-{size}-Instruct",
             "qwen3": "Qwen/Qwen3-{size}",
@@ -173,65 +178,89 @@ class ModelDownloader:
             "mistral": "mistralai/Mistral-{size}",
         }
         
+        ms_model_map = {
+            "qwen2.5": "Qwen/Qwen2.5-{size}-Instruct",
+            "qwen3": "Qwen/Qwen3-{size}",
+            "qwen3.5": "Qwen/Qwen3.5-{size}",
+            "gemma-4": "AI-ModelScope/gemma-4-{size}-it",
+            "llama": "meta-llama/Llama-{size}",
+            "mistral": "mistralai/Mistral-{size}",
+        }
+        
+        model_map = ms_model_map if source == "ms" else hf_model_map
+        
         for gguf_name in gguf_models:
             if not gguf_name.endswith(".gguf"):
                 continue
                 
-            # Extract model family and size from filename
             name_lower = gguf_name.lower()
-            hf_repo = None
+            repo = None
             
-            for family, repo_template in hf_model_map.items():
+            for family, repo_template in model_map.items():
                 if family in name_lower:
-                    # Try to extract size (e.g., 8B, 4B, 1.7B)
                     import re
                     size_match = re.search(r'(\d+\.?\d*[bB])', gguf_name)
                     if size_match:
                         size = size_match.group(1).replace('B', 'b').replace('b', 'B')
-                        hf_repo = repo_template.replace("{size}", size)
+                        repo = repo_template.replace("{size}", size)
                     break
             
-            if not hf_repo:
-                # Fallback: try to guess from filename
-                # Remove quantization suffix (Q4_K_M, etc.) and .gguf
+            if not repo:
                 clean_name = re.sub(r'-Q[0-9]+_[A-Z0-9]+\.gguf$', '', gguf_name, flags=re.IGNORECASE)
                 clean_name = re.sub(r'-q[0-9]+_[a-z0-9]+\.gguf$', '', clean_name, flags=re.IGNORECASE)
-                # Try common patterns
                 if "qwen" in clean_name.lower():
-                    hf_repo = f"Qwen/{clean_name}"
+                    repo = f"Qwen/{clean_name}"
                 elif "gemma" in clean_name.lower():
-                    hf_repo = f"google/{clean_name}"
+                    repo = f"AI-ModelScope/{clean_name}" if source == "ms" else f"google/{clean_name}"
             
-            if not hf_repo:
-                results.append({"gguf": gguf_name, "status": "skipped", "reason": "cannot determine HF repo"})
+            if not repo:
+                results.append({"gguf": gguf_name, "status": "skipped", "reason": "cannot determine repo"})
                 continue
             
-            # Check if already downloaded
-            repo_name = hf_repo.split("/")[-1]
+            repo_name = repo.split("/")[-1]
             target_dir = self._model_dir / repo_name
             if target_dir.exists() and any(target_dir.glob("*.safetensors")):
-                results.append({"gguf": gguf_name, "hf_repo": hf_repo, "status": "exists", "path": str(target_dir)})
+                results.append({"gguf": gguf_name, "repo": repo, "status": "exists", "path": str(target_dir)})
                 continue
             
-            # Download
             try:
-                from huggingface_hub import snapshot_download
-                import os
-                
-                env = os.environ.copy()
-                if self._hf_mirror_url:
-                    env["HF_ENDPOINT"] = self._hf_mirror_url
-                
-                def _download():
-                    return snapshot_download(
-                        repo_id=hf_repo,
-                        local_dir=str(self._model_dir / repo_name),
-                    )
-                
-                loop = asyncio.get_event_loop()
-                result = await loop.run_in_executor(None, _download)
-                results.append({"gguf": gguf_name, "hf_repo": hf_repo, "status": "downloaded", "path": result})
+                if source == "ms":
+                    result = await self._download_modelscope_auto(repo, repo_name)
+                else:
+                    result = await self._download_hf_auto(repo, repo_name)
+                results.append({"gguf": gguf_name, "repo": repo, "status": "downloaded", "path": result})
             except Exception as e:
-                results.append({"gguf": gguf_name, "hf_repo": hf_repo, "status": "error", "error": str(e)})
+                results.append({"gguf": gguf_name, "repo": repo, "status": "error", "error": str(e)})
         
         return results
+
+    async def _download_hf_auto(self, repo: str, repo_name: str) -> str:
+        from huggingface_hub import snapshot_download
+        import os
+        
+        env = os.environ.copy()
+        if self._hf_mirror_url:
+            env["HF_ENDPOINT"] = self._hf_mirror_url
+        
+        def _download():
+            return snapshot_download(
+                repo_id=repo,
+                local_dir=str(self._model_dir / repo_name),
+            )
+        
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, _download)
+
+    async def _download_modelscope_auto(self, repo: str, repo_name: str) -> str:
+        def _download():
+            try:
+                from modelscope.hub.snapshot_download import snapshot_download as ms_download
+            except ImportError:
+                raise ImportError("modelscope not installed")
+            return ms_download(
+                repo_id=repo,
+                local_dir=str(self._model_dir / repo_name),
+            )
+        
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, _download)

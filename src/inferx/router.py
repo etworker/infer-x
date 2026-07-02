@@ -212,16 +212,20 @@ async def download_model(body: DownloadRequest):
 
 
 @router.post("/models/download/safetensors")
-async def auto_download_safetensors():
-    """Auto-download safetensor versions for all gguf models."""
+async def auto_download_safetensors(source: str = "hf"):
+    """Auto-download safetensor versions for all gguf models.
+    
+    Args:
+        source: "hf" for HuggingFace, "ms" for ModelScope
+    """
     models = _mgr().list_models()
     gguf_models = [m["name"] for m in models if m["name"].endswith(".gguf")]
     
     if not gguf_models:
         return {"message": "No GGUF models found", "results": []}
     
-    results = await _mgr().downloader.auto_download_safetensors(gguf_models)
-    return {"message": f"Processed {len(results)} models", "results": results}
+    results = await _mgr().downloader.auto_download_safetensors(gguf_models, source=source)
+    return {"message": f"Processed {len(results)} models from {source}", "results": results}
 
 
 @router.get("/models/download/status")
