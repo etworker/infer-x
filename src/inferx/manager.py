@@ -394,6 +394,7 @@ class InstanceManager:
                 env=env,
                 stdout=subprocess.DEVNULL,
                 stderr=open(stderr_file, "w"),
+                start_new_session=True,
             )
         except FileNotFoundError as e:
             self._release_port(port)
@@ -495,10 +496,15 @@ class InstanceManager:
     def _kill_process(self, inst: InstanceProcess) -> None:
         if inst.process and inst.process.poll() is None:
             try:
-                inst.process.send_signal(signal.SIGTERM)
+                # Kill the entire process tree
+                import os
+                os.killpg(os.getpgid(inst.process.pid), signal.SIGTERM)
                 inst.process.wait(timeout=10)
-            except (subprocess.TimeoutExpired, ProcessLookupError):
-                inst.process.kill()
+            except (subprocess.TimeoutExpired, ProcessLookupError, OSError):
+                try:
+                    os.killpg(os.getpgid(inst.process.pid), signal.SIGKILL)
+                except Exception:
+                    pass
             except Exception:
                 pass
 
