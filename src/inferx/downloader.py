@@ -215,20 +215,22 @@ class ModelDownloader:
             
             # Download
             try:
-                req = DownloadRequest(
-                    source=DownloadSource.huggingface,
-                    repo=hf_repo,
-                )
-                progress = await self.start_download(req)
+                from huggingface_hub import snapshot_download
+                import os
                 
-                # Wait for download to complete
-                while progress.status == DownloadStatus.downloading:
-                    await asyncio.sleep(1)
+                env = os.environ.copy()
+                if self._hf_mirror_url:
+                    env["HF_ENDPOINT"] = self._hf_mirror_url
                 
-                if progress.status == DownloadStatus.completed:
-                    results.append({"gguf": gguf_name, "hf_repo": hf_repo, "status": "downloaded", "path": progress.save_path})
-                else:
-                    results.append({"gguf": gguf_name, "hf_repo": hf_repo, "status": "failed", "error": progress.error})
+                def _download():
+                    return snapshot_download(
+                        repo_id=hf_repo,
+                        local_dir=str(self._model_dir / repo_name),
+                    )
+                
+                loop = asyncio.get_event_loop()
+                result = await loop.run_in_executor(None, _download)
+                results.append({"gguf": gguf_name, "hf_repo": hf_repo, "status": "downloaded", "path": result})
             except Exception as e:
                 results.append({"gguf": gguf_name, "hf_repo": hf_repo, "status": "error", "error": str(e)})
         
