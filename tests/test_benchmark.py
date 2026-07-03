@@ -7,9 +7,9 @@ from inferx.benchmark import (
     BenchmarkResult,
     BatchBenchmarkReport,
     BenchmarkManager,
-    GPUMonitor,
     SingleBenchmarkResult,
 )
+from inferx.monitor import ResourceMonitor
 
 
 class TestBenchmarkConfig:
@@ -135,13 +135,10 @@ class TestBenchmarkManager:
 
 
 class TestGPUMonitor:
-    def test_get_gpu_info(self):
-        monitor = GPUMonitor()
-        info = monitor.get_gpu_info()
-        assert "available" in info
-
-    def test_get_gpu_memory(self):
-        monitor = GPUMonitor()
-        memory = monitor.get_gpu_memory_used()
-        assert isinstance(memory, float)
-        assert memory >= 0
+    def test_get_gpus(self):
+        monitor = ResourceMonitor()
+        gpus = monitor.get_gpus()
+        assert isinstance(gpus, list)
+        if gpus:
+            assert gpus[0].total_memory_mb > 0
+            assert gpus[0].used_memory_mb >= 0

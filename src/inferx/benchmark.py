@@ -107,54 +107,6 @@ class BatchBenchmarkProgress(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# GPU Monitor
-# ---------------------------------------------------------------------------
-
-class GPUMonitor:
-    def __init__(self):
-        self._nvml_available = False
-        try:
-            import pynvml
-            pynvml.nvmlInit()
-            self._nvml_available = True
-        except Exception:
-            pass
-
-    def get_gpu_info(self) -> dict[str, Any]:
-        if not self._nvml_available:
-            return {"available": False}
-        import pynvml
-        try:
-            count = pynvml.nvmlDeviceGetCount()
-            gpus = []
-            for i in range(count):
-                handle = pynvml.nvmlDeviceGetHandleByIndex(i)
-                mem = pynvml.nvmlDeviceGetMemoryInfo(handle)
-                name = pynvml.nvmlDeviceGetName(handle)
-                if isinstance(name, bytes):
-                    name = name.decode()
-                gpus.append({
-                    "index": i, "name": name,
-                    "total_mb": mem.total // (1024 * 1024),
-                    "used_mb": mem.used // (1024 * 1024),
-                })
-            return {"available": True, "count": count, "gpus": gpus}
-        except Exception:
-            return {"available": False}
-
-    def get_gpu_memory_used(self) -> float:
-        if not self._nvml_available:
-            return 0.0
-        import pynvml
-        try:
-            handle = pynvml.nvmlDeviceGetHandleByIndex(0)
-            mem = pynvml.nvmlDeviceGetMemoryInfo(handle)
-            return mem.used / (1024 * 1024)
-        except Exception:
-            return 0.0
-
-
-# ---------------------------------------------------------------------------
 # Benchmark Manager
 # ---------------------------------------------------------------------------
 
@@ -164,7 +116,6 @@ class BenchmarkManager:
     def __init__(self, data_dir: Path):
         self._data_dir = data_dir
         self._data_dir.mkdir(parents=True, exist_ok=True)
-        self._gpu_monitor = GPUMonitor()
         self._manager = None  # InstanceManager
         self._active_batches: dict[str, BatchBenchmarkProgress] = {}
         self._batch_tasks: dict[str, asyncio.Task] = {}
@@ -387,8 +338,6 @@ class BenchmarkManager:
             url = f"http://localhost:{port}"
             payload = self._build_request(backend, model, scenario)
 
-            self._gpu_monitor.get_gpu_memory_used()
-
             async with httpx.AsyncClient(timeout=timeout) as client:
                 if backend in ("vllm", "sglang", "tgi"):
                     endpoint = f"{url}/v1/chat/completions"
@@ -416,7 +365,11 @@ class BenchmarkManager:
                     result.success = False
                     result.error = f"HTTP {response.status_code}"
 
-            result.gpu_memory_used_mb = self._gpu_monitor.get_gpu_memory_used()
+            # Get GPU memory usage via ResourceMonitor
+            from .monitor import ResourceMonitor
+            gpus = ResourceMonitor().get_gpus()
+            if gpus:
+                result.gpu_memory_used_mb = float(gpus[0].used_memory_mb)
 
         except Exception as e:
             result.success = False

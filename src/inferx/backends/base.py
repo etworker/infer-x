@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-import re
 import shutil
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any
+
+from ..utils import guess_family, guess_quantization
 
 
 class Backend(ABC):
@@ -37,18 +38,11 @@ class Backend(ABC):
 
     @staticmethod
     def _guess_family(name: str) -> str | None:
-        """Guess model family from filename."""
-        name_lower = name.lower()
-        for family in ["qwen", "gemma", "llama", "mistral", "phi", "deepseek", "yi", "baichuan"]:
-            if family in name_lower:
-                return family
-        return None
+        return guess_family(name)
 
     @staticmethod
     def _guess_quantization(name: str) -> str | None:
-        """Guess quantization from filename."""
-        m = re.search(r"(Q[0-9]+_[A-Z0-9]+|F16|F32|BF16|IQ[0-9]+_[A-Z0-9]+)", name, re.IGNORECASE)
-        return m.group(1).upper() if m else None
+        return guess_quantization(name)
 
 
 def get_backend(backend_type: str) -> Backend:
@@ -79,80 +73,93 @@ def get_backend(backend_type: str) -> Backend:
     return backend_cls()
 
 
+_installed_cache: dict[str, tuple[bool, float]] = {}
+
+
 def check_backend_installed(backend_type: str) -> bool:
-    """Check if a backend is installed on the system."""
+    """Check if a backend is installed on the system (cached for 60s)."""
     import os
     import subprocess
+    import time
 
+    now = time.monotonic()
+    cached = _installed_cache.get(backend_type)
+    if cached and now - cached[1] < 60:
+        return cached[0]
+
+    result = False
     try:
         if backend_type == "llamacpp":
             if shutil.which("llama-server"):
-                return True
-            env_bin = os.environ.get("LLAMA_SERVER_BIN")
-            if env_bin and Path(env_bin).exists():
-                return True
-            home = Path.home()
-            common_paths = [
-                home / "llama.cpp" / "build" / "bin" / "llama-server",
-                Path("/usr/local/bin/llama-server"),
-                Path("/usr/bin/llama-server"),
-            ]
-            return any(p.exists() for p in common_paths)
+                result = True
+            else:
+                env_bin = os.environ.get("LLAMA_SERVER_BIN")
+                if env_bin and Path(env_bin).exists():
+                    result = True
+                else:
+                    home = Path.home()
+                    common_paths = [
+                        home / "llama.cpp" / "build" / "bin" / "llama-server",
+                        Path("/usr/local/bin/llama-server"),
+                        Path("/usr/bin/llama-server"),
+                    ]
+                    result = any(p.exists() for p in common_paths)
 
         elif backend_type == "vllm":
             try:
                 import importlib
                 importlib.import_module("vllm")
-                return True
+                result = True
             except ImportError:
-                return False
+                result = False
 
         elif backend_type == "sglang":
             try:
                 import importlib
                 importlib.import_module("sglang")
-                return True
+                result = True
             except ImportError:
-                return False
+                result = False
 
         elif backend_type == "tgi":
-            result = subprocess.run(
+            proc = subprocess.run(
                 ["docker", "images", "-q", "ghcr.io/huggingface/text-generation-inference"],
                 capture_output=True, text=True, timeout=5
             )
-            return bool(result.stdout.strip())
+            result = bool(proc.stdout.strip())
 
         elif backend_type == "ollama":
-            return shutil.which("ollama") is not None
+            result = shutil.which("ollama") is not None
 
         elif backend_type == "tensorrt_llm":
             try:
                 import importlib
                 importlib.import_module("tensorrt_llm")
-                return True
+                result = True
             except ImportError:
-                return False
+                result = False
 
         elif backend_type == "lmdeploy":
             try:
                 import importlib
                 importlib.import_module("lmdeploy")
-                return True
+                result = True
             except ImportError:
-                return False
+                result = False
 
         elif backend_type == "openvino":
             try:
                 import importlib
                 importlib.import_module("openvino")
-                return True
+                result = True
             except ImportError:
-                return False
+                result = False
 
     except Exception:
-        return False
+        result = False
 
-    return False
+    _installed_cache[backend_type] = (result, now)
+    return result
 
 
 def get_all_backends_status() -> list[dict[str, Any]]:

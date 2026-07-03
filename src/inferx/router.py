@@ -28,6 +28,7 @@ from .models import (
     SystemInfo,
 )
 from .monitoring import AlertManager, AlertRule, AuditLogger, UsageTracker
+from .utils import get_server_paths
 
 router = APIRouter(prefix="/api")
 
@@ -86,16 +87,7 @@ def _audit() -> AuditLogger:
 @router.get("/system/info", response_model=SystemInfo)
 async def system_info():
     cfg = _cfg().config
-    server_paths = {
-        "llamacpp": cfg.llama_server_bin,
-        "vllm": cfg.vllm_server_bin,
-        "sglang": cfg.sglang_server_bin,
-        "tgi": cfg.tgi_bin,
-        "ollama": cfg.ollama_bin,
-        "tensorrt_llm": cfg.tensorrt_llm_bin,
-        "lmdeploy": cfg.lmdeploy_bin,
-        "openvino": cfg.openvino_bin,
-    }
+    server_paths = get_server_paths(cfg)
     return _mgr().monitor.get_system_info(server_paths)
 
 
@@ -790,5 +782,13 @@ async def delete_batch(batch_id: str):
 # GPU info
 @router.get("/benchmark/gpu")
 async def gpu_info():
-    from .benchmark import GPUMonitor
-    return GPUMonitor().get_gpu_info()
+    from .monitor import ResourceMonitor
+    monitor = ResourceMonitor()
+    gpus = monitor.get_gpus()
+    if not gpus:
+        return {"available": False}
+    return {
+        "available": True,
+        "count": len(gpus),
+        "gpus": [{"index": g.index, "name": g.name, "total_mb": g.total_memory_mb, "used_mb": g.used_memory_mb} for g in gpus],
+    }

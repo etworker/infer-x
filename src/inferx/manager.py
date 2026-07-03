@@ -17,6 +17,7 @@ from typing import Any
 import httpx
 
 from .backends import get_backend
+from .cache import TTLCache
 from .config import ConfigManager
 from .downloader import ModelDownloader
 from .models import (
@@ -26,8 +27,10 @@ from .models import (
     InstanceStatus,
 )
 from .monitor import ResourceMonitor
+from .params import resolve_params
+from .utils import guess_family, guess_quantization, get_binary_path
 
-logger = logging.getLogger("infer_helper")
+logger = logging.getLogger("inferx")
 
 
 @dataclass
@@ -52,6 +55,7 @@ class InstanceManager:
         self._ports_in_use: set = set()
         self._logs_dir = Path(__file__).parent / "logs"
         self._logs_dir.mkdir(exist_ok=True)
+        self._model_cache = TTLCache(default_ttl=5.0)
 
     @property
     def monitor(self) -> ResourceMonitor:
@@ -83,15 +87,18 @@ class InstanceManager:
 
     def list_models(self, backend_type: BackendType | None = None) -> list[dict[str, Any]]:
         """List available models, optionally filtered by backend type."""
+        cache_key = f"models:{backend_type}"
+        cached = self._model_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
         model_dir = Path(self._config.config.model_dir).expanduser()
         models = []
 
         if backend_type:
-            # Use backend-specific model discovery
             backend = get_backend(backend_type.value)
             models = backend.get_model_paths(model_dir)
         else:
-            # Discover models for all backends, deduplicate by path
             seen_paths = set()
             for bt in BackendType:
                 try:
@@ -106,6 +113,7 @@ class InstanceManager:
                 except Exception:
                     continue
 
+        self._model_cache.set(cache_key, models)
         return models
 
     def get_model_info(self, name: str) -> dict[str, Any] | None:
@@ -143,8 +151,8 @@ class InstanceManager:
                         "name": name,
                         "path": str(target),
                         "size_mb": round(total_size / (1024 * 1024), 1) if total_size > 0 else 0,
-                        "family": self._guess_family(target.name),
-                        "quantization": self._guess_quantization(target.name),
+                        "family": guess_family(target.name),
+                        "quantization": guess_quantization(target.name),
                         "backend": backend_type.value,
                     }
 
@@ -187,19 +195,7 @@ class InstanceManager:
             return True
         return False
 
-    @staticmethod
-    def _guess_family(name: str) -> str | None:
-        name_lower = name.lower()
-        for family in ["qwen", "gemma", "llama", "mistral", "phi", "deepseek", "yi", "baichuan"]:
-            if family in name_lower:
-                return family
-        return None
-
-    @staticmethod
-    def _guess_quantization(name: str) -> str | None:
-        import re
-        m = re.search(r"(Q[0-9]+_[A-Z0-9]+|F16|F32|BF16|IQ[0-9]+_[A-Z0-9]+)", name, re.IGNORECASE)
-        return m.group(1).upper() if m else None
+    # --- Model info helpers (delegated to utils) ---
 
     # ---- instance lifecycle -------------------------------------------------
 
@@ -222,17 +218,7 @@ class InstanceManager:
             )
 
         # Get binary path based on backend
-        binary_map = {
-            BackendType.llamacpp: cfg.llama_server_bin,
-            BackendType.vllm: cfg.vllm_server_bin,
-            BackendType.sglang: cfg.sglang_server_bin,
-            BackendType.tgi: cfg.tgi_bin,
-            BackendType.ollama: cfg.ollama_bin,
-            BackendType.tensorrt_llm: cfg.tensorrt_llm_bin,
-            BackendType.lmdeploy: cfg.lmdeploy_bin,
-            BackendType.openvino: cfg.openvino_bin,
-        }
-        binary = binary_map.get(backend_type, "")
+        binary = get_binary_path(backend_type, cfg)
 
         # For llamacpp, model_path is the .gguf file
         # For vllm/sglang/tgi/lmdeploy, model_path is the model directory or HF model name
@@ -259,111 +245,11 @@ class InstanceManager:
             "log_file": str(log_path),
         }
 
-        # Helper function to resolve parameter from request -> preset -> config
-        def resolve_param(req_val, preset_val, cfg_val):
-            if req_val is not None:
-                return req_val
-            if preset_val is not None:
-                return preset_val
-            return cfg_val
-
-        # llama.cpp parameters
-        if backend_type == BackendType.llamacpp:
-            params["ctx_size"] = resolve_param(req.ctx_size, preset.ctx_size if preset else None, cfg.default_ctx_size)
-            params["n_gpu_layers"] = resolve_param(req.n_gpu_layers, preset.n_gpu_layers if preset else None, cfg.default_n_gpu_layers)
-            params["threads"] = resolve_param(req.threads, preset.threads if preset else None, cfg.default_threads)
-            params["batch_size"] = resolve_param(req.batch_size, preset.batch_size if preset else None, cfg.default_batch_size)
-            params["n_parallel"] = resolve_param(req.n_parallel, preset.n_parallel if preset else None, cfg.default_n_parallel)
-            params["flash_attn"] = resolve_param(req.flash_attn, preset.flash_attn if preset else None, cfg.default_flash_attn)
-            params["sleep_idle_seconds"] = resolve_param(req.sleep_idle_seconds, preset.sleep_idle_seconds if preset else None, cfg.default_sleep_idle_seconds)
+        # Data-driven parameter resolution: request -> preset -> config
+        params.update(resolve_params(backend_type, req, preset, cfg))
+        # alias is request-only (not in preset/config)
+        if req.alias:
             params["alias"] = req.alias
-            params["mlock"] = resolve_param(req.mlock, preset.mlock if preset else None, cfg.default_mlock)
-            params["no_mmap"] = resolve_param(req.no_mmap, preset.no_mmap if preset else None, cfg.default_no_mmap)
-            params["numa"] = resolve_param(req.numa, preset.numa if preset else None, cfg.default_numa)
-            params["cont_batching"] = resolve_param(req.cont_batching, preset.cont_batching if preset else None, cfg.default_cont_batching)
-
-        # vLLM parameters
-        elif backend_type == BackendType.vllm:
-            params["tensor_parallel_size"] = resolve_param(req.tensor_parallel_size, preset.tensor_parallel_size if preset else None, cfg.default_tensor_parallel_size)
-            params["pipeline_parallel_size"] = resolve_param(req.pipeline_parallel_size, preset.pipeline_parallel_size if preset else None, cfg.default_pipeline_parallel_size)
-            params["max_model_len"] = resolve_param(req.max_model_len, preset.max_model_len if preset else None, cfg.default_max_model_len)
-            params["gpu_memory_utilization"] = resolve_param(req.gpu_memory_utilization, preset.gpu_memory_utilization if preset else None, cfg.default_gpu_memory_utilization)
-            params["max_num_seqs"] = resolve_param(req.max_num_seqs, preset.max_num_seqs if preset else None, cfg.default_max_num_seqs)
-            params["max_num_batched_tokens"] = resolve_param(req.max_num_batched_tokens, preset.max_num_batched_tokens if preset else None, cfg.default_max_num_batched_tokens)
-            params["dtype"] = resolve_param(req.dtype, preset.dtype if preset else None, cfg.default_vllm_dtype)
-            params["quantization"] = resolve_param(req.quantization, preset.quantization if preset else None, cfg.default_quantization)
-            params["trust_remote_code"] = resolve_param(req.trust_remote_code, preset.trust_remote_code if preset else None, cfg.default_trust_remote_code)
-            params["chat_template"] = resolve_param(req.chat_template, preset.chat_template if preset else None, cfg.default_chat_template)
-            params["seed"] = resolve_param(req.seed, preset.seed if preset else None, cfg.default_seed)
-            params["disable_log_requests"] = resolve_param(req.disable_log_requests, preset.disable_log_requests if preset else None, cfg.default_disable_log_requests)
-            params["enforce_eager"] = resolve_param(req.enforce_eager, preset.enforce_eager if preset else None, cfg.default_enforce_eager)
-            params["max_context_len_to_capture"] = resolve_param(req.max_context_len_to_capture, preset.max_context_len_to_capture if preset else None, cfg.default_max_context_len_to_capture)
-
-        # SGLang parameters
-        elif backend_type == BackendType.sglang:
-            params["tp"] = resolve_param(req.tp, preset.tp if preset else None, cfg.default_tp)
-            params["mem_fraction_static"] = resolve_param(req.mem_fraction_static, preset.mem_fraction_static if preset else None, cfg.default_mem_fraction_static)
-            params["max_num_reqs"] = resolve_param(req.max_num_reqs, preset.max_num_reqs if preset else None, cfg.default_max_num_reqs)
-            params["nnodes"] = resolve_param(req.nnodes, preset.nnodes if preset else None, cfg.default_nnodes)
-            params["nccl_nvls"] = resolve_param(req.nccl_nvls, preset.nccl_nvls if preset else None, cfg.default_nccl_nvls)
-            params["chunked_prefill_size"] = resolve_param(req.chunked_prefill_size, preset.chunked_prefill_size if preset else None, cfg.default_chunked_prefill_size)
-            params["mem_cache_size"] = resolve_param(req.mem_cache_size, preset.mem_cache_size if preset else None, cfg.default_mem_cache_size)
-            params["token_logprob_threshold"] = resolve_param(req.token_logprob_threshold, preset.token_logprob_threshold if preset else None, cfg.default_token_logprob_threshold)
-            params["schedule_policy"] = resolve_param(req.schedule_policy, preset.schedule_policy if preset else None, cfg.default_schedule_policy)
-            params["schedule_conservativeness"] = resolve_param(req.schedule_conservativeness, preset.schedule_conservativeness if preset else None, cfg.default_schedule_conservativeness)
-            params["server_worker_path"] = resolve_param(req.server_worker_path, preset.server_worker_path if preset else None, cfg.default_server_worker_path)
-
-        # TGI parameters
-        elif backend_type == BackendType.tgi:
-            params["tgi_model_id"] = resolve_param(req.tgi_model_id, preset.tgi_model_id if preset else None, cfg.default_tgi_model_id)
-            params["tgi_max_batch_prefill_tokens"] = resolve_param(req.tgi_max_batch_prefill_tokens, preset.tgi_max_batch_prefill_tokens if preset else None, cfg.default_tgi_max_batch_prefill_tokens)
-            params["tgi_max_batch_total_tokens"] = resolve_param(req.tgi_max_batch_total_tokens, preset.tgi_max_batch_total_tokens if preset else None, cfg.default_tgi_max_batch_total_tokens)
-            params["tgi_max_concurrent_requests"] = resolve_param(req.tgi_max_concurrent_requests, preset.tgi_max_concurrent_requests if preset else None, cfg.default_tgi_max_concurrent_requests)
-            params["tgi_max_input_length"] = resolve_param(req.tgi_max_input_length, preset.tgi_max_input_length if preset else None, cfg.default_tgi_max_input_length)
-            params["tgi_max_total_tokens"] = resolve_param(req.tgi_max_total_tokens, preset.tgi_max_total_tokens if preset else None, cfg.default_tgi_max_total_tokens)
-            params["tgi_sharded"] = resolve_param(req.tgi_sharded, preset.tgi_sharded if preset else None, cfg.default_tgi_sharded)
-            params["tgi_num_shard"] = resolve_param(req.tgi_num_shard, preset.tgi_num_shard if preset else None, cfg.default_tgi_num_shard)
-            params["tgi_quantize"] = resolve_param(req.tgi_quantize, preset.tgi_quantize if preset else None, cfg.default_tgi_quantize)
-            params["tgi_dtype"] = resolve_param(req.tgi_dtype, preset.tgi_dtype if preset else None, cfg.default_tgi_dtype)
-            params["tgi_cuda_flash_attention"] = resolve_param(req.tgi_cuda_flash_attention, preset.tgi_cuda_flash_attention if preset else None, cfg.default_tgi_cuda_flash_attention)
-            params["tgi_disable_grammar"] = resolve_param(req.tgi_disable_grammar, preset.tgi_disable_grammar if preset else None, cfg.default_tgi_disable_grammar)
-
-        # Ollama parameters
-        elif backend_type == BackendType.ollama:
-            params["ollama_num_parallel"] = resolve_param(req.ollama_num_parallel, preset.ollama_num_parallel if preset else None, cfg.default_ollama_num_parallel)
-            params["ollama_num_gpu"] = resolve_param(req.ollama_num_gpu, preset.ollama_num_gpu if preset else None, cfg.default_ollama_num_gpu)
-            params["ollama_num_ctx"] = resolve_param(req.ollama_num_ctx, preset.ollama_num_ctx if preset else None, cfg.default_ollama_num_ctx)
-            params["ollama_num_batch"] = resolve_param(req.ollama_num_batch, preset.ollama_num_batch if preset else None, cfg.default_ollama_num_batch)
-            params["ollama_low_vram"] = resolve_param(req.ollama_low_vram, preset.ollama_low_vram if preset else None, cfg.default_ollama_low_vram)
-            params["ollama_flash_attention"] = resolve_param(req.ollama_flash_attention, preset.ollama_flash_attention if preset else None, cfg.default_ollama_flash_attention)
-
-        # TensorRT-LLM parameters
-        elif backend_type == BackendType.tensorrt_llm:
-            params["trt_max_batch_size"] = resolve_param(req.trt_max_batch_size, preset.trt_max_batch_size if preset else None, cfg.default_trt_max_batch_size)
-            params["trt_max_input_len"] = resolve_param(req.trt_max_input_len, preset.trt_max_input_len if preset else None, cfg.default_trt_max_input_len)
-            params["trt_max_output_len"] = resolve_param(req.trt_max_output_len, preset.trt_max_output_len if preset else None, cfg.default_trt_max_output_len)
-            params["trt_max_seq_len"] = resolve_param(req.trt_max_seq_len, preset.trt_max_seq_len if preset else None, cfg.default_trt_max_seq_len)
-            params["trt_dtype"] = resolve_param(req.trt_dtype, preset.trt_dtype if preset else None, cfg.default_trt_dtype)
-            params["trt_deprecate_legacy"] = resolve_param(req.trt_deprecate_legacy, preset.trt_deprecate_legacy if preset else None, cfg.default_trt_deprecate_legacy)
-
-        # LMDeploy parameters
-        elif backend_type == BackendType.lmdeploy:
-            params["lmdeploy_tp"] = resolve_param(req.lmdeploy_tp, preset.lmdeploy_tp if preset else None, cfg.default_lmdeploy_tp)
-            params["lmdeploy_session_len"] = resolve_param(req.lmdeploy_session_len, preset.lmdeploy_session_len if preset else None, cfg.default_lmdeploy_session_len)
-            params["lmdeploy_max_batch_size"] = resolve_param(req.lmdeploy_max_batch_size, preset.lmdeploy_max_batch_size if preset else None, cfg.default_lmdeploy_max_batch_size)
-            params["lmdeploy_cache_max_entry_count"] = resolve_param(req.lmdeploy_cache_max_entry_count, preset.lmdeploy_cache_max_entry_count if preset else None, cfg.default_lmdeploy_cache_max_entry_count)
-            params["lmdeploy_quant_policy"] = resolve_param(req.lmdeploy_quant_policy, preset.lmdeploy_quant_policy if preset else None, cfg.default_lmdeploy_quant_policy)
-            params["lmdeploy_rope_scaling_factor"] = resolve_param(req.lmdeploy_rope_scaling_factor, preset.lmdeploy_rope_scaling_factor if preset else None, cfg.default_lmdeploy_rope_scaling_factor)
-            params["lmdeploy_turbomind_tp"] = resolve_param(req.lmdeploy_turbomind_tp, preset.lmdeploy_turbomind_tp if preset else None, cfg.default_lmdeploy_turbomind_tp)
-
-        # OpenVINO parameters
-        elif backend_type == BackendType.openvino:
-            params["ov_model_name"] = resolve_param(req.ov_model_name, preset.ov_model_name if preset else None, cfg.default_ov_model_name)
-            params["ov_batch_size"] = resolve_param(req.ov_batch_size, preset.ov_batch_size if preset else None, cfg.default_ov_batch_size)
-            params["ov_max_model_len"] = resolve_param(req.ov_max_model_len, preset.ov_max_model_len if preset else None, cfg.default_ov_max_model_len)
-            params["ov_nireq"] = resolve_param(req.ov_nireq, preset.ov_nireq if preset else None, cfg.default_ov_nireq)
-            params["ov_plugin_config"] = resolve_param(req.ov_plugin_config, preset.ov_plugin_config if preset else None, cfg.default_ov_plugin_config)
-            params["ov_model_section"] = resolve_param(req.ov_model_section, preset.ov_model_section if preset else None, cfg.default_ov_model_section)
 
         host = req.host or cfg.default_host
         extra_args = req.extra_args or (preset.extra_args if preset else [])

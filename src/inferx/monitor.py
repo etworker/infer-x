@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import psutil
 
 try:
@@ -16,11 +18,6 @@ from .models import GPUInfo, SystemInfo
 
 
 class ResourceMonitor:
-    def __init__(self):
-        self._instance_gpu_usage: dict[int, int] = {}  # instance_pid -> gpu_mem_mb
-
-    # ---- GPU ----------------------------------------------------------------
-
     def get_gpus(self) -> list[GPUInfo]:
         if not _NVML_AVAILABLE:
             return []
@@ -49,14 +46,6 @@ class ResourceMonitor:
             )
         return gpus
 
-    def get_total_gpu_free_mb(self) -> int:
-        gpus = self.get_gpus()
-        if not gpus:
-            return 0
-        return min(g.free_memory_mb for g in gpus)
-
-    # ---- RAM ----------------------------------------------------------------
-
     def get_ram(self) -> dict[str, int]:
         vm = psutil.virtual_memory()
         return {
@@ -65,15 +54,11 @@ class ResourceMonitor:
             "available_mb": vm.available // (1024 * 1024),
         }
 
-    # ---- CPU ----------------------------------------------------------------
-
     def get_cpu_info(self) -> dict[str, Any]:
         return {
             "count": psutil.cpu_count(logical=True),
             "percent": psutil.cpu_percent(interval=0.1),
         }
-
-    # ---- combined -----------------------------------------------------------
 
     def get_system_info(self, server_paths: dict[str, str]) -> SystemInfo:
         gpus = self.get_gpus()
@@ -88,19 +73,6 @@ class ResourceMonitor:
             cpu_percent=cpu["percent"],
             server_paths=server_paths,
         )
-
-    # ---- per-instance tracking ----------------------------------------------
-
-    def update_instance_gpu(self, pid: int, gpu_mb: int) -> None:
-        self._instance_gpu_usage[pid] = gpu_mb
-
-    def remove_instance_gpu(self, pid: int) -> None:
-        self._instance_gpu_usage.pop(pid, None)
-
-    def get_instance_gpu(self, pid: int) -> int | None:
-        return self._instance_gpu_usage.get(pid)
-
-    # ---- process helpers ----------------------------------------------------
 
     @staticmethod
     def get_process_memory_mb(pid: int) -> float | None:
@@ -118,6 +90,3 @@ class ResourceMonitor:
             return p.is_running() and p.status() != psutil.STATUS_ZOMBIE
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             return False
-
-
-from typing import Any  # noqa: E402  (needed for get_cpu_info return type)

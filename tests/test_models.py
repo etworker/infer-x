@@ -292,3 +292,74 @@ class TestDownloadProgress:
         )
         assert dp.progress_pct == 0.0
         assert dp.downloaded_bytes == 0
+
+
+# ---------------------------------------------------------------------------
+# Config field parity (Phase 6)
+# ---------------------------------------------------------------------------
+
+# All backend parameter field names — must be kept in sync across models
+_BACKEND_PARAM_FIELDS = [
+    # llama.cpp
+    "ctx_size", "n_gpu_layers", "threads", "batch_size", "n_parallel",
+    "flash_attn", "sleep_idle_seconds", "mlock", "no_mmap", "numa", "cont_batching",
+    # vLLM
+    "tensor_parallel_size", "pipeline_parallel_size", "max_model_len",
+    "gpu_memory_utilization", "max_num_seqs", "max_num_batched_tokens",
+    "dtype", "quantization", "trust_remote_code", "chat_template", "seed",
+    "disable_log_requests", "enforce_eager", "max_context_len_to_capture",
+    # SGLang
+    "tp", "mem_fraction_static", "max_num_reqs", "nnodes", "nccl_nvls",
+    "chunked_prefill_size", "mem_cache_size", "token_logprob_threshold",
+    "schedule_policy", "schedule_conservativeness", "server_worker_path",
+    # TGI
+    "tgi_model_id", "tgi_max_batch_prefill_tokens", "tgi_max_batch_total_tokens",
+    "tgi_max_concurrent_requests", "tgi_max_input_length", "tgi_max_total_tokens",
+    "tgi_sharded", "tgi_num_shard", "tgi_quantize", "tgi_dtype",
+    "tgi_cuda_flash_attention", "tgi_disable_grammar",
+    # Ollama
+    "ollama_num_parallel", "ollama_num_gpu", "ollama_num_ctx", "ollama_num_batch",
+    "ollama_low_vram", "ollama_flash_attention",
+    # TensorRT-LLM
+    "trt_max_batch_size", "trt_max_input_len", "trt_max_output_len",
+    "trt_max_seq_len", "trt_dtype", "trt_deprecate_legacy",
+    # LMDeploy
+    "lmdeploy_tp", "lmdeploy_session_len", "lmdeploy_max_batch_size",
+    "lmdeploy_cache_max_entry_count", "lmdeploy_quant_policy",
+    "lmdeploy_rope_scaling_factor", "lmdeploy_turbomind_tp",
+    # OpenVINO
+    "ov_model_name", "ov_batch_size", "ov_max_model_len", "ov_nireq",
+    "ov_plugin_config", "ov_model_section",
+]
+
+
+class TestBackendFieldParity:
+    """Verify that InstanceStartRequest, Preset, and DefaultConfig declare the same backend fields."""
+
+    def test_instance_start_request_has_all_fields(self):
+        req_fields = set(InstanceStartRequest.model_fields.keys())
+        missing = set(_BACKEND_PARAM_FIELDS) - req_fields
+        assert not missing, f"InstanceStartRequest missing fields: {missing}"
+
+    def test_preset_has_all_fields(self):
+        preset_fields = set(Preset.model_fields.keys())
+        missing = set(_BACKEND_PARAM_FIELDS) - preset_fields
+        assert not missing, f"Preset missing fields: {missing}"
+
+    def test_default_config_has_all_fields(self):
+        cfg_fields = set(DefaultConfig.model_fields.keys())
+        # Verify all cfg_field names from the registry exist in DefaultConfig
+        from inferx.params import BACKEND_PARAMS
+        for specs in BACKEND_PARAMS.values():
+            for spec in specs:
+                assert spec.cfg_field in cfg_fields, f"DefaultConfig missing cfg_field: {spec.cfg_field}"
+
+    def test_params_registry_matches_models(self):
+        """Verify BACKEND_PARAMS registry covers all fields in the models."""
+        from inferx.params import BACKEND_PARAMS
+        registry_fields = set()
+        for specs in BACKEND_PARAMS.values():
+            for spec in specs:
+                registry_fields.add(spec.req_field)
+        missing = set(_BACKEND_PARAM_FIELDS) - registry_fields
+        assert not missing, f"BACKEND_PARAMS registry missing fields: {missing}"
