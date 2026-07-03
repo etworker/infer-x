@@ -33,6 +33,8 @@ class ModelService:
         else:
             seen_paths: set[str] = set()
             for bt in BackendType:
+                if bt == BackendType.ollama:
+                    continue
                 try:
                     backend = get_backend(bt.value)
                     backend_models = backend.get_model_paths(model_dir)

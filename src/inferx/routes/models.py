@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 
 from ..models import DownloadProgress, DownloadRequest
-from . import get_manager
+from . import get_audit_logger, get_manager
 
 router = APIRouter()
 
@@ -37,7 +37,9 @@ async def download_model(body: DownloadRequest):
         raise HTTPException(400, "repo is required for modelscope source")
     if body.source.value == "url" and not body.url:
         raise HTTPException(400, "url is required for url source")
-    return await get_manager().downloader.start_download(body)
+    task = await get_manager().downloader.start_download(body)
+    get_audit_logger().log("model.download", "model", task.task_id, details={"source": body.source.value, "repo": body.repo or body.url})
+    return task
 
 
 @router.post("/models/download/safetensors")

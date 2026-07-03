@@ -97,6 +97,13 @@ async def system_gpus():
     }
 
 
+@router.get("/system/discover")
+async def discover_processes():
+    """Discover external GPU processes that may be inference backends."""
+    procs = get_manager().monitor.detect_gpu_processes()
+    return {"processes": procs}
+
+
 @router.get("/system/export")
 async def export_config():
     """Export current configuration as JSON."""

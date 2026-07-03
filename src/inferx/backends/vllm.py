@@ -5,11 +5,21 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from ._utils import resolve_binary
 from .base import Backend
+from ..models import BackendType
+from .registry import register_backend
 
 
+@register_backend(BackendType.vllm)
 class VLLMBackend(Backend):
     """vLLM inference backend."""
+    backend_id = "vllm"
+    backend_name = "vLLM"
+    description = "High-performance LLM serving with PagedAttention"
+    model_types = ["huggingface", "safetensors"]
+    check_type = "python_module"
+    binary_config_attr = "vllm_server_bin"
 
     def build_command(
         self,
@@ -20,12 +30,7 @@ class VLLMBackend(Backend):
         params: dict[str, Any],
         extra_args: list[str],
     ) -> list[str]:
-        binary = params.get("binary", "python -m vllm.entrypoints.openai.api_server")
-
-        if binary.startswith("python"):
-            cmd = binary.split()
-        else:
-            cmd = [binary]
+        cmd = resolve_binary(params.get("binary", "python -m vllm.entrypoints.openai.api_server"))
 
         cmd.extend([
             "--model", str(model_path),
@@ -33,40 +38,40 @@ class VLLMBackend(Backend):
             "--port", str(port),
         ])
 
+        from ._utils import add_flag
+        add_flag(cmd, params, "max_model_len", "--max-model-len")
+        add_flag(cmd, params, "max_num_seqs", "--max-num-seqs")
+        add_flag(cmd, params, "max_num_batched_tokens", "--max-num-batched-tokens")
+        add_flag(cmd, params, "quantization", "--quantization")
+        add_flag(cmd, params, "chat_template", "--chat-template")
+        add_flag(cmd, params, "seed", "--seed")
+        add_flag(cmd, params, "max_context_len_to_capture", "--max-context-len-to-capture")
+        add_flag(cmd, params, "trust_remote_code", "--trust-remote-code")
+        add_flag(cmd, params, "disable_log_requests", "--disable-log-requests")
+        add_flag(cmd, params, "enforce_eager", "--enforce-eager")
         if params.get("tensor_parallel_size") and params["tensor_parallel_size"] > 1:
             cmd.extend(["--tensor-parallel-size", str(params["tensor_parallel_size"])])
         if params.get("pipeline_parallel_size") and params["pipeline_parallel_size"] > 1:
             cmd.extend(["--pipeline-parallel-size", str(params["pipeline_parallel_size"])])
-        if params.get("max_model_len"):
-            cmd.extend(["--max-model-len", str(params["max_model_len"])])
         if params.get("gpu_memory_utilization") and params["gpu_memory_utilization"] < 1.0:
             cmd.extend(["--gpu-memory-utilization", str(params["gpu_memory_utilization"])])
-        if params.get("max_num_seqs"):
-            cmd.extend(["--max-num-seqs", str(params["max_num_seqs"])])
-        if params.get("max_num_batched_tokens"):
-            cmd.extend(["--max-num-batched-tokens", str(params["max_num_batched_tokens"])])
         if params.get("dtype") and params["dtype"] != "auto":
             cmd.extend(["--dtype", params["dtype"]])
-        if params.get("quantization"):
-            cmd.extend(["--quantization", params["quantization"]])
-        if params.get("trust_remote_code"):
-            cmd.append("--trust-remote-code")
-        if params.get("chat_template"):
-            cmd.extend(["--chat-template", params["chat_template"]])
-        if params.get("seed") is not None:
-            cmd.extend(["--seed", str(params["seed"])])
-        if params.get("disable_log_requests"):
-            cmd.append("--disable-log-requests")
-        if params.get("enforce_eager"):
-            cmd.append("--enforce-eager")
-        if params.get("max_context_len_to_capture"):
-            cmd.extend(["--max-context-len-to-capture", str(params["max_context_len_to_capture"])])
 
         cmd.extend(extra_args)
         return cmd
 
     def get_env(self, binary_path: str) -> dict[str, str]:
         return {}
+
+    @classmethod
+    def is_installed(cls) -> bool:
+        try:
+            import importlib
+            importlib.import_module("vllm")
+            return True
+        except ImportError:
+            return False
 
     def get_model_paths(self, model_dir: Path) -> list[dict[str, Any]]:
         """Discover HuggingFace model directories."""

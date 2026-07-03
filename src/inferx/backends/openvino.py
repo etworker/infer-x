@@ -6,10 +6,19 @@ from pathlib import Path
 from typing import Any
 
 from .base import Backend
+from ..models import BackendType
+from .registry import register_backend
 
 
+@register_backend(BackendType.openvino)
 class OpenVINOBackend(Backend):
     """Intel OpenVINO Model Server backend."""
+    backend_id = "openvino"
+    backend_name = "OpenVINO"
+    description = "Intel optimized inference for Intel hardware"
+    model_types = ["openvino"]
+    check_type = "python_module"
+    binary_config_attr = "openvino_bin"
 
     def build_command(
         self,
@@ -45,6 +54,15 @@ class OpenVINOBackend(Backend):
 
     def get_env(self, binary_path: str) -> dict[str, str]:
         return {}
+
+    @classmethod
+    def is_installed(cls) -> bool:
+        try:
+            import importlib
+            importlib.import_module("openvino")
+            return True
+        except ImportError:
+            return False
 
     def get_model_paths(self, model_dir: Path) -> list[dict[str, Any]]:
         models = []

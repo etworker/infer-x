@@ -5,11 +5,21 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from ._utils import resolve_binary
 from .base import Backend
+from ..models import BackendType
+from .registry import register_backend
 
 
+@register_backend(BackendType.lmdeploy)
 class LMDeployBackend(Backend):
     """LMDeploy inference backend."""
+    backend_id = "lmdeploy"
+    backend_name = "LMDeploy"
+    description = "Shanghai AI Lab inference, optimized for Chinese models"
+    model_types = ["huggingface", "safetensors"]
+    check_type = "python_module"
+    binary_config_attr = "lmdeploy_bin"
 
     def build_command(
         self,
@@ -20,12 +30,7 @@ class LMDeployBackend(Backend):
         params: dict[str, Any],
         extra_args: list[str],
     ) -> list[str]:
-        binary = params.get("binary", "lmdeploy serve api_server")
-
-        if " " in binary:
-            cmd = binary.split()
-        else:
-            cmd = [binary]
+        cmd = resolve_binary(params.get("binary", "lmdeploy serve api_server"))
 
         cmd.extend([str(model_path), "--server-port", str(port)])
 
@@ -51,6 +56,15 @@ class LMDeployBackend(Backend):
 
     def get_env(self, binary_path: str) -> dict[str, str]:
         return {}
+
+    @classmethod
+    def is_installed(cls) -> bool:
+        try:
+            import importlib
+            importlib.import_module("lmdeploy")
+            return True
+        except ImportError:
+            return False
 
     def get_model_paths(self, model_dir: Path) -> list[dict[str, Any]]:
         models = []

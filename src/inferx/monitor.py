@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import os
+import re
+from pathlib import Path
 from typing import Any
 
 import psutil
@@ -15,6 +18,27 @@ except Exception:
     _NVML_AVAILABLE = False
 
 from .models import GPUInfo, SystemInfo
+
+
+_BACKEND_PATTERNS: list[tuple[re.Pattern, str, list[tuple[str, str, type]]]] = [
+    (re.compile(r"llama-server"), "llamacpp", [
+        ("-m", "model", str), ("--port", "port", int),
+    ]),
+    (re.compile(r"python.*vllm"), "vllm", [
+        ("--model", "model", str), ("--port", "port", int),
+    ]),
+    (re.compile(r"python.*sglang"), "sglang", [
+        ("--model-path", "model", str), ("--port", "port", int),
+    ]),
+    (re.compile(r"text-generation-launcher"), "tgi", [
+        ("--model-id", "model", str),
+    ]),
+    (re.compile(r"ollama serve"), "ollama", []),
+    (re.compile(r"lmdeploy"), "lmdeploy", [
+        ("--server-port", "port", int),
+    ]),
+    (re.compile(r"ovms"), "openvino", []),
+]
 
 
 class ResourceMonitor:
@@ -90,3 +114,76 @@ class ResourceMonitor:
             return p.is_running() and p.status() != psutil.STATUS_ZOMBIE
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             return False
+
+    def detect_gpu_processes(self) -> list[dict[str, Any]]:
+        """Scan GPU processes and identify potential inference backends."""
+        if not _NVML_AVAILABLE:
+            return []
+
+        results: list[dict[str, Any]] = []
+        seen_pids: set[int] = set()
+
+        try:
+            count = pynvml.nvmlDeviceGetCount()
+        except Exception:
+            return results
+
+        for i in range(count):
+            try:
+                handle = pynvml.nvmlDeviceGetHandleByIndex(i)
+                gpu_name = pynvml.nvmlDeviceGetName(handle)
+                if isinstance(gpu_name, bytes):
+                    gpu_name = gpu_name.decode()
+                procs = pynvml.nvmlDeviceGetComputeRunningProcesses(handle)
+            except Exception:
+                continue
+
+            for proc in procs:
+                pid = proc.pid
+                if pid in seen_pids:
+                    continue
+                seen_pids.add(pid)
+
+                gpu_mem = proc.usedGpuMemory // (1024 * 1024) if hasattr(proc, "usedGpuMemory") else 0
+                results.append(self._analyze_process(pid, gpu_mem, gpu_name, i))
+
+        return results
+
+    @staticmethod
+    def _analyze_process(pid: int, gpu_mem_mb: int, gpu_name: str, gpu_index: int) -> dict[str, Any]:
+        try:
+            cmdline = Path(f"/proc/{pid}/cmdline").read_text().replace("\0", " ").strip()
+        except Exception:
+            cmdline = ""
+
+        result: dict[str, Any] = {
+            "pid": pid,
+            "discovered": True,
+            "gpu_memory_mb": gpu_mem_mb,
+            "gpu_index": gpu_index,
+            "gpu_name": gpu_name,
+            "cmdline": cmdline,
+            "backend": None,
+            "model": None,
+            "port": None,
+        }
+
+        if not cmdline:
+            return result
+
+        for pattern, backend_name, flags in _BACKEND_PATTERNS:
+            if pattern.search(cmdline):
+                result["backend"] = backend_name
+                for flag, key, cast in flags:
+                    m = re.search(rf"{re.escape(flag)}\s+(\S+)", cmdline)
+                    if m:
+                        try:
+                            result[key] = cast(m.group(1))
+                        except (ValueError, TypeError):
+                            pass
+                break
+
+        if result["model"]:
+            result["model"] = Path(result["model"]).name
+
+        return result

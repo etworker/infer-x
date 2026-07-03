@@ -5,11 +5,21 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from ._utils import resolve_binary
 from .base import Backend
+from ..models import BackendType
+from .registry import register_backend
 
 
+@register_backend(BackendType.sglang)
 class SGLangBackend(Backend):
     """SGLang inference backend."""
+    backend_id = "sglang"
+    backend_name = "SGLang"
+    description = "High-performance LLM framework with RadixAttention"
+    model_types = ["huggingface", "safetensors"]
+    check_type = "python_module"
+    binary_config_attr = "sglang_server_bin"
 
     def build_command(
         self,
@@ -20,14 +30,7 @@ class SGLangBackend(Backend):
         params: dict[str, Any],
         extra_args: list[str],
     ) -> list[str]:
-        binary = params.get("binary", "python -m sglang.launch_server")
-
-        # Prepend environment variable to command
-
-        if binary.startswith("python"):
-            cmd = [binary.split()[0], "-m", binary.split()[-1]]
-        else:
-            cmd = [binary]
+        cmd = resolve_binary(params.get("binary", "python -m sglang.launch_server"))
 
         cmd.extend([
             "--model-path", str(model_path),
@@ -52,6 +55,15 @@ class SGLangBackend(Backend):
             "SGLANG_KERNEL_DISABLE_JIT": "1",
             "SGL_KERNEL_DISABLE_JIT": "1",
         }
+
+    @classmethod
+    def is_installed(cls) -> bool:
+        try:
+            import importlib
+            importlib.import_module("sglang")
+            return True
+        except ImportError:
+            return False
 
     def get_model_paths(self, model_dir: Path) -> list[dict[str, Any]]:
         """Discover HuggingFace model directories."""

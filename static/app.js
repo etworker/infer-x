@@ -39,6 +39,7 @@ function toast(msg, ok = true) {
 function fmt(b) { return b >= 1073741824 ? (b/1073741824).toFixed(1)+' GB' : b >= 1048576 ? (b/1048576).toFixed(0)+' MB' : (b/1024).toFixed(0)+' KB'; }
 function fmtMB(mb) { return mb >= 1024 ? (mb/1024).toFixed(1)+' GB' : mb.toFixed(0)+' MB'; }
 function fmtPct(p) { return p != null ? p.toFixed(0) + '%' : '-'; }
+function escHtml(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
 function ago(t) {
   if (!t) return '-';
   const s = Math.floor((Date.now() - new Date(t).getTime()) / 1000);
@@ -119,7 +120,11 @@ function drawChart(canvasId, data, maxVal, color, fillColor) {
 }
 
 async function renderDashboard() {
-  const [info, health, instData, backendsResp] = await Promise.all([api('/system/info'), api('/system/health'), api('/instances'), api('/system/backends')]);
+  const [info, health, instData, backendsResp, discoverResp] = await Promise.all([
+    api('/system/info'), api('/system/health'), api('/instances'),
+    api('/system/backends'), api('/system/discover'),
+  ]);
+  const discovered = discoverResp.processes || [];
   const gpu = info.gpus[0];
   const instances = instData.instances || [];
   const backends = backendsResp.backends || [];
@@ -223,6 +228,10 @@ async function renderDashboard() {
         <div class="card-header"><h2>Running Models</h2></div>
         <div id="dash-inst-body"></div>
       </div>
+      <div class="card" id="dash-discover-card" style="display:none">
+        <div class="card-header"><h2>Detected External Processes</h2><span style="font-size:12px;color:var(--text2)">Not managed by infer-x</span></div>
+        <div id="dash-discover-body"></div>
+      </div>
     `;
   }
 
@@ -250,6 +259,29 @@ async function renderDashboard() {
       <thead><tr><th>Status</th><th>Model</th><th>Backend</th><th>Parameters</th><th>Port</th><th>PID</th><th>RAM</th><th>Uptime</th><th>Actions</th></tr></thead>
       <tbody>${instRows}</tbody>
     </table></div>`;
+  }
+
+  // discovered external processes
+  const discoverCard = document.getElementById('dash-discover-card');
+  if (discovered.length > 0) {
+    const discRows = discovered.map(d => {
+      let info = [];
+      if (d.backend) info.push(`<span class="badge badge-running">${d.backend}</span>`);
+      if (d.model) info.push(`model: ${d.model}`);
+      if (d.port) info.push(`port: ${d.port}`);
+      if (d.gpu_memory_mb) info.push(`GPU: ${fmtMB(d.gpu_memory_mb)}`);
+      return `<tr>
+        <td>${d.pid}</td>
+        <td>${info.join(' | ') || '<span style="color:var(--text2)">unknown</span>'}</td>
+        <td style="font-size:11px;color:var(--text2);max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(d.cmdline)}">${escHtml(d.cmdline.slice(0, 100))}${d.cmdline.length > 100 ? '…' : ''}</td>
+      </tr>`;
+    }).join('');
+    if (discoverCard) {
+      discoverCard.style.display = '';
+      discoverCard.querySelector('#dash-discover-body').innerHTML = `<div class="table-wrap"><table><thead><tr><th>PID</th><th>Info</th><th>Command</th></tr></thead><tbody>${discRows}</tbody></table></div>`;
+    }
+  } else if (discoverCard) {
+    discoverCard.style.display = 'none';
   }
 
   // draw charts
@@ -485,104 +517,30 @@ async function quickStart(model) {
 }
 
 async function doStartInstance() {
-  const backend = document.getElementById('start-backend').value;
   const body = {
     model: document.getElementById('start-model').value,
-    backend: backend,
+    backend: document.getElementById('start-backend').value,
     preset: document.getElementById('start-preset').value || null,
     host: document.getElementById('start-host').value || null,
   };
   const port = document.getElementById('start-port').value;
   if (port) body.port = parseInt(port);
 
-  // Helper to parse int/float
-  const parseIntOrNull = (id) => { const v = document.getElementById(id)?.value; return v ? parseInt(v) : null; };
-  const parseFloatOrNull = (id) => { const v = document.getElementById(id)?.value; return v ? parseFloat(v) : null; };
-  const strOrNull = (id) => document.getElementById(id)?.value || null;
-  const boolOrNull = (id) => { const v = document.getElementById(id)?.value; return v === 'true' ? true : v === 'false' ? false : null; };
+  const get = (id) => document.getElementById(id)?.value || null;
+  const pi = (id) => { const v = get(id); return v ? parseInt(v) : null; };
+  const pf = (id) => { const v = get(id); return v ? parseFloat(v) : null; };
 
-  // Add backend-specific parameters
-  if (backend === 'llamacpp') {
-    body.ctx_size = parseIntOrNull('start-ctx');
-    body.n_gpu_layers = strOrNull('start-ngl');
-    body.n_parallel = parseIntOrNull('start-np');
-    body.batch_size = parseIntOrNull('start-batch');
-    body.threads = parseIntOrNull('start-threads');
-    body.flash_attn = strOrNull('start-fa');
-    body.sleep_idle_seconds = parseIntOrNull('start-sleep-idle');
-    body.alias = strOrNull('start-alias');
-    body.mlock = boolOrNull('start-mlock');
-    body.no_mmap = boolOrNull('start-no-mmap');
-    body.numa = strOrNull('start-numa');
-    body.cont_batching = boolOrNull('start-cont-batching');
-  } else if (backend === 'vllm') {
-    body.tensor_parallel_size = parseIntOrNull('start-tp');
-    body.pipeline_parallel_size = parseIntOrNull('start-pp');
-    body.max_model_len = parseIntOrNull('start-max-model-len');
-    body.gpu_memory_utilization = parseFloatOrNull('start-gpu-mem-util');
-    body.max_num_seqs = parseIntOrNull('start-max-num-seqs');
-    body.max_num_batched_tokens = parseIntOrNull('start-max-num-batched-tokens');
-    body.dtype = strOrNull('start-dtype');
-    body.quantization = strOrNull('start-quantization');
-    body.trust_remote_code = boolOrNull('start-trust-remote-code');
-    body.chat_template = strOrNull('start-chat-template');
-    body.seed = parseIntOrNull('start-seed');
-    body.disable_log_requests = boolOrNull('start-disable-log');
-    body.enforce_eager = boolOrNull('start-enforce-eager');
-    body.max_context_len_to_capture = parseIntOrNull('start-max-ctx-capture');
-  } else if (backend === 'sglang') {
-    body.tp = parseIntOrNull('start-sglang-tp');
-    body.mem_fraction_static = parseFloatOrNull('start-mem-fraction');
-    body.max_num_reqs = parseIntOrNull('start-max-num-reqs');
-    body.nnodes = parseIntOrNull('start-nnodes');
-    body.chunked_prefill_size = parseIntOrNull('start-chunked-prefill');
-    body.mem_cache_size = parseIntOrNull('start-mem-cache-size');
-    body.token_logprob_threshold = parseFloatOrNull('start-token-logprob');
-    body.schedule_policy = strOrNull('start-schedule-policy');
-    body.schedule_conservativeness = parseFloatOrNull('start-schedule-conservativeness');
-    body.nccl_nvls = boolOrNull('start-nccl-nvls');
-    body.server_worker_path = strOrNull('start-server-worker-path');
-  } else if (backend === 'tgi') {
-    body.tgi_model_id = strOrNull('start-tgi-model-id');
-    body.tgi_num_shard = parseIntOrNull('start-tgi-num-shard');
-    body.tgi_max_batch_prefill_tokens = parseIntOrNull('start-tgi-max-batch-prefill');
-    body.tgi_max_batch_total_tokens = parseIntOrNull('start-tgi-max-batch-total');
-    body.tgi_max_concurrent_requests = parseIntOrNull('start-tgi-max-concurrent');
-    body.tgi_max_input_length = parseIntOrNull('start-tgi-max-input');
-    body.tgi_max_total_tokens = parseIntOrNull('start-tgi-max-total');
-    body.tgi_quantize = strOrNull('start-tgi-quantize');
-    body.tgi_dtype = strOrNull('start-tgi-dtype');
-    body.tgi_sharded = boolOrNull('start-tgi-sharded');
-    body.tgi_cuda_flash_attention = boolOrNull('start-tgi-flash-attn');
-    body.tgi_disable_grammar = boolOrNull('start-tgi-disable-grammar');
-  } else if (backend === 'ollama') {
-    body.ollama_num_parallel = parseIntOrNull('start-ollama-num-parallel');
-    body.ollama_num_gpu = parseIntOrNull('start-ollama-num-gpu');
-    body.ollama_num_ctx = parseIntOrNull('start-ollama-num-ctx');
-    body.ollama_num_batch = parseIntOrNull('start-ollama-num-batch');
-    body.ollama_low_vram = boolOrNull('start-ollama-low-vram');
-    body.ollama_flash_attention = boolOrNull('start-ollama-flash-attn');
-  } else if (backend === 'tensorrt_llm') {
-    body.trt_max_batch_size = parseIntOrNull('start-trt-max-batch');
-    body.trt_max_input_len = parseIntOrNull('start-trt-max-input');
-    body.trt_max_output_len = parseIntOrNull('start-trt-max-output');
-    body.trt_max_seq_len = parseIntOrNull('start-trt-max-seq');
-    body.trt_dtype = strOrNull('start-trt-dtype');
-    body.trt_deprecate_legacy = boolOrNull('start-trt-deprecate');
-  } else if (backend === 'lmdeploy') {
-    body.lmdeploy_tp = parseIntOrNull('start-lmdeploy-tp');
-    body.lmdeploy_session_len = parseIntOrNull('start-lmdeploy-session');
-    body.lmdeploy_max_batch_size = parseIntOrNull('start-lmdeploy-max-batch');
-    body.lmdeploy_cache_max_entry_count = parseFloatOrNull('start-lmdeploy-cache');
-    body.lmdeploy_quant_policy = parseIntOrNull('start-lmdeploy-quant');
-    body.lmdeploy_rope_scaling_factor = parseFloatOrNull('start-lmdeploy-rope');
-  } else if (backend === 'openvino') {
-    body.ov_model_name = strOrNull('start-ov-model-name');
-    body.ov_batch_size = parseIntOrNull('start-ov-batch');
-    body.ov_max_model_len = parseIntOrNull('start-ov-max-len');
-    body.ov_nireq = parseIntOrNull('start-ov-nireq');
-    body.ov_plugin_config = strOrNull('start-ov-plugin');
-  }
+  body.ctx_size = pi('start-ctx');
+  body.n_gpu_layers = get('start-ngl');
+  body.n_parallel = pi('start-np');
+  body.tensor_parallel_size = pi('start-tp');
+  body.gpu_memory_utilization = pf('start-gpu-mem-util');
+  body.max_model_len = pi('start-max-model-len');
+  body.dtype = get('start-dtype');
+  body.quantization = get('start-quantization');
+
+  const extra = get('start-extra-args');
+  if (extra) body.extra_args = extra.split(/\s+/).filter(Boolean);
 
   try {
     const inst = await api('/instances', { method: 'POST', body: JSON.stringify(body) });
@@ -590,23 +548,6 @@ async function doStartInstance() {
     closeModal('modal-start');
     renderInstances();
   } catch (e) { toast(e.message, false); }
-}
-
-function onBackendChange() {
-  const backend = document.getElementById('start-backend').value;
-  document.getElementById('params-llamacpp').style.display = backend === 'llamacpp' ? '' : 'none';
-  document.getElementById('params-vllm').style.display = backend === 'vllm' ? '' : 'none';
-  document.getElementById('params-sglang').style.display = backend === 'sglang' ? '' : 'none';
-  document.getElementById('params-tgi').style.display = backend === 'tgi' ? '' : 'none';
-  document.getElementById('params-ollama').style.display = backend === 'ollama' ? '' : 'none';
-  document.getElementById('params-tensorrt_llm').style.display = backend === 'tensorrt_llm' ? '' : 'none';
-  document.getElementById('params-lmdeploy').style.display = backend === 'lmdeploy' ? '' : 'none';
-  document.getElementById('params-openvino').style.display = backend === 'openvino' ? '' : 'none';
-}
-
-function onPresetChange() {
-  // Preset selection could pre-fill parameters based on backend
-  // For now, just clear custom values when preset changes
 }
 
 async function stopInstance(id) {

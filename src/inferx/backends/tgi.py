@@ -2,14 +2,24 @@
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 from typing import Any
 
 from .base import Backend
+from ..models import BackendType
+from .registry import register_backend
 
 
+@register_backend(BackendType.tgi)
 class TGIBackend(Backend):
     """HuggingFace Text Generation Inference backend."""
+    backend_id = "tgi"
+    backend_name = "TGI"
+    description = "HuggingFace Text Generation Inference, production-grade"
+    model_types = ["huggingface", "safetensors"]
+    check_type = "docker_image"
+    binary_config_attr = "tgi_bin"
 
     def build_command(
         self,
@@ -57,6 +67,17 @@ class TGIBackend(Backend):
 
     def get_env(self, binary_path: str) -> dict[str, str]:
         return {}
+
+    @classmethod
+    def is_installed(cls) -> bool:
+        try:
+            proc = subprocess.run(
+                ["docker", "images", "-q", "ghcr.io/huggingface/text-generation-inference"],
+                capture_output=True, text=True, timeout=5,
+            )
+            return bool(proc.stdout.strip())
+        except Exception:
+            return False
 
     def get_model_paths(self, model_dir: Path) -> list[dict[str, Any]]:
         models = []

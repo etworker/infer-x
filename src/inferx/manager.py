@@ -32,7 +32,7 @@ class InstanceManager:
         self._model_svc = ModelService(config_manager)
         logs_dir = Path(__file__).parent / "logs"
         logs_dir.mkdir(exist_ok=True)
-        self._proc_mgr = ProcessManager(config_manager, self._monitor, logs_dir)
+        self._proc_mgr = ProcessManager(config_manager, self._monitor, logs_dir, port_manager=self._port_mgr)
         self._http_client = httpx.AsyncClient(timeout=10)
 
     # ---- properties ---------------------------------------------------------
@@ -85,7 +85,7 @@ class InstanceManager:
         inst = self._proc_mgr.instances.get(inst_id)
         if inst:
             self._port_mgr.release(inst.info.port)
-        return self._proc_mgr.stop(inst_id)
+        return await self._proc_mgr.stop(inst_id)
 
     async def restart_instance(self, inst_id: str) -> InstanceInfo:
         inst = self._proc_mgr.instances.get(inst_id)
@@ -100,7 +100,7 @@ class InstanceManager:
             n_parallel=inst.info.n_parallel,
             extra_args=inst.info.extra_args,
         )
-        self._proc_mgr.kill(inst)
+        await self._proc_mgr.kill(inst)
         self._port_mgr.release(inst.info.port)
         del self._proc_mgr.instances[inst_id]
         return await self.start_instance(old_req)

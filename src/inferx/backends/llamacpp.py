@@ -2,14 +2,26 @@
 
 from __future__ import annotations
 
+import os
+import shutil
 from pathlib import Path
 from typing import Any
 
+from ._utils import add_flag
 from .base import Backend
+from ..models import BackendType
+from .registry import register_backend
 
 
+@register_backend(BackendType.llamacpp)
 class LlamaCppBackend(Backend):
     """llama.cpp inference backend."""
+    backend_id = "llamacpp"
+    backend_name = "llama.cpp"
+    description = "Local GGUF model inference, lightweight"
+    model_types = ["gguf"]
+    check_type = "binary"
+    binary_config_attr = "llama_server_bin"
 
     def build_command(
         self,
@@ -46,28 +58,38 @@ class LlamaCppBackend(Backend):
             "--log-file", str(log_file),
         ]
 
-        if threads is not None:
-            cmd.extend(["-t", str(threads)])
+        add_flag(cmd, params, "threads", "-t")
+        add_flag(cmd, params, "alias", "-a")
+        add_flag(cmd, params, "mlock", "--mlock")
+        add_flag(cmd, params, "no_mmap", "--no-mmap")
+        add_flag(cmd, params, "numa", "--numa")
+        add_flag(cmd, params, "cont_batching", "--cont-batching")
         if flash_attn and flash_attn != "none":
             cmd.extend(["-fa", str(flash_attn)])
         if sleep_idle is not None and sleep_idle > 0:
             cmd.extend(["--sleep-idle-seconds", str(sleep_idle)])
-        if alias:
-            cmd.extend(["-a", alias])
-        if mlock:
-            cmd.append("--mlock")
-        if no_mmap:
-            cmd.append("--no-mmap")
-        if numa:
-            cmd.extend(["--numa", str(numa)])
-        if cont_batching:
-            cmd.append("--cont-batching")
 
         cmd.extend(extra_args)
         return cmd
 
     def get_env(self, binary_path: str) -> dict[str, str]:
         return {"LD_LIBRARY_PATH": str(Path(binary_path).parent)}
+
+    @classmethod
+    def is_installed(cls) -> bool:
+        if shutil.which("llama-server"):
+            return True
+        env_bin = os.environ.get("LLAMA_SERVER_BIN")
+        if env_bin and Path(env_bin).exists():
+            return True
+        home = Path.home()
+        return any(
+            p.exists() for p in [
+                home / "llama.cpp" / "build" / "bin" / "llama-server",
+                Path("/usr/local/bin/llama-server"),
+                Path("/usr/bin/llama-server"),
+            ]
+        )
 
     def get_model_paths(self, model_dir: Path) -> list[dict[str, Any]]:
         models = []

@@ -6,10 +6,12 @@ from .enums import BackendType, DownloadSource, DownloadStatus, InstanceStatus
 from .instance import InstanceInfo, InstanceList, InstanceStartRequest
 from .log import InstanceLogs, LogEntry
 from .model import ModelFileInfo, ModelInfo
+from .params import BackendParams
 from .preset import Preset
 from .system import GPUInfo, HealthResponse, SystemInfo
 
 __all__ = [
+    "BackendParams",
     "BackendType",
     "ConfigUpdate",
     "DefaultConfig",
@@ -21,7 +23,6 @@ __all__ = [
     "HealthResponse",
     "InstanceInfo",
     "InstanceList",
-    "InstanceLogs",
     "InstanceStartRequest",
     "InstanceStatus",
     "LogEntry",

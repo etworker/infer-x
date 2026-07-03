@@ -2,14 +2,24 @@
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 from typing import Any
 
 from .base import Backend
+from ..models import BackendType
+from .registry import register_backend
 
 
+@register_backend(BackendType.ollama)
 class OllamaBackend(Backend):
     """Ollama inference backend."""
+    backend_id = "ollama"
+    backend_name = "Ollama"
+    description = "User-friendly local LLM runner"
+    model_types = ["ollama"]
+    check_type = "binary"
+    binary_config_attr = "ollama_bin"
 
     def build_command(
         self,
@@ -26,6 +36,10 @@ class OllamaBackend(Backend):
 
     def get_env(self, binary_path: str) -> dict[str, str]:
         return {}
+
+    @classmethod
+    def is_installed(cls) -> bool:
+        return shutil.which("ollama") is not None
 
     def get_model_paths(self, model_dir: Path) -> list[dict[str, Any]]:
         return []

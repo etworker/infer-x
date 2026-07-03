@@ -8,7 +8,7 @@ from pydantic import BaseModel
 import httpx
 
 from ..models import InstanceInfo, InstanceList, InstanceLogs, InstanceStartRequest
-from . import get_manager
+from . import get_audit_logger, get_manager
 
 router = APIRouter()
 
@@ -17,13 +17,19 @@ router = APIRouter()
 
 @router.post("/instances", response_model=InstanceInfo)
 async def start_instance(body: InstanceStartRequest):
+    audit = get_audit_logger()
     try:
-        return await get_manager().start_instance(body)
+        info = await get_manager().start_instance(body)
+        audit.log("instance.start", "instance", info.id, details={"model": body.model, "backend": str(body.backend)})
+        return info
     except FileNotFoundError as e:
+        audit.log("instance.start", "instance", body.model, success=False, error_message=str(e))
         raise HTTPException(404, detail={"error": "model_not_found", "message": str(e)})
     except RuntimeError as e:
+        audit.log("instance.start", "instance", body.model, success=False, error_message=str(e))
         raise HTTPException(400, detail={"error": "startup_failed", "message": str(e)})
     except Exception as e:
+        audit.log("instance.start", "instance", body.model, success=False, error_message=str(e))
         raise HTTPException(500, detail={"error": "internal_error", "message": str(e)})
 
 
@@ -51,8 +57,11 @@ async def get_instance(inst_id: str):
 @router.delete("/instances/{inst_id}")
 async def stop_instance(inst_id: str):
     ok = await get_manager().stop_instance(inst_id)
+    audit = get_audit_logger()
     if not ok:
+        audit.log("instance.stop", "instance", inst_id, success=False, error_message="not found")
         raise HTTPException(404, f"Instance not found: {inst_id}")
+    audit.log("instance.stop", "instance", inst_id)
     return {"success": True}
 
 

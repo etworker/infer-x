@@ -58,7 +58,7 @@
 
 <!-- Start Instance Modal -->
 <div class="modal-overlay" id="modal-start">
-  <div class="modal" style="max-height:85vh;overflow-y:auto">
+  <div class="modal">
     <h3>Start Instance</h3>
     <div class="form-group">
       <label>Model</label>
@@ -66,7 +66,7 @@
     </div>
     <div class="form-row">
       <div class="form-group"><label>Backend</label>
-        <select id="start-backend" onchange="onBackendChange()">
+        <select id="start-backend">
           <option value="llamacpp">llama.cpp</option>
           <option value="vllm">vLLM</option>
           <option value="sglang">SGLang</option>
@@ -77,195 +77,32 @@
           <option value="openvino">OpenVINO</option>
         </select>
       </div>
-      <div class="form-group"><label>Preset</label><select id="start-preset" onchange="onPresetChange()"><option value="">None</option></select></div>
+      <div class="form-group"><label>Preset</label><select id="start-preset"><option value="">None</option></select></div>
     </div>
     <div class="form-row">
       <div class="form-group"><label>Port (auto if empty)</label><input id="start-port" type="number" placeholder="auto"></div>
       <div class="form-group"><label>Host</label><input id="start-host" value="0.0.0.0"></div>
     </div>
-    
-    <!-- llama.cpp parameters -->
-    <div id="params-llamacpp">
-      <h4 style="margin:12px 0 8px;color:var(--text2);font-size:12px">llama.cpp Parameters</h4>
-      <div class="form-row">
-        <div class="form-group"><label>Context Size (-c)</label><input id="start-ctx" type="number" value="4096"></div>
-        <div class="form-group"><label>GPU Layers (-ngl)</label><input id="start-ngl" value="auto"></div>
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label>Parallel Slots (-np)</label><input id="start-np" type="number" value="1"></div>
-        <div class="form-group"><label>Batch Size (-b)</label><input id="start-batch" type="number" value="2048"></div>
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label>Threads (-t)</label><input id="start-threads" type="number" placeholder="auto"></div>
-        <div class="form-group"><label>Flash Attention (-fa)</label><select id="start-fa"><option value="auto">auto</option><option value="on">on</option><option value="off">off</option></select></div>
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label>Sleep Idle (s)</label><input id="start-sleep-idle" type="number" value="-1"></div>
-        <div class="form-group"><label>Alias (-a)</label><input id="start-alias" placeholder="optional"></div>
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label>Mlock</label><select id="start-mlock"><option value="false">No</option><option value="true">Yes</option></select></div>
-        <div class="form-group"><label>No Mmap</label><select id="start-no-mmap"><option value="false">No</option><option value="true">Yes</option></select></div>
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label>Numa</label><select id="start-numa"><option value="">off</option><option value="distribute">distribute</option><option value="isolate">isolate</option><option value="numactl">numactl</option></select></div>
-        <div class="form-group"><label>Cont Batching</label><select id="start-cont-batching"><option value="true">Yes</option><option value="false">No</option></select></div>
-      </div>
+
+    <h4 style="margin:12px 0 8px;color:var(--text2);font-size:12px">Common Options</h4>
+    <div class="form-row">
+      <div class="form-group"><label>Context Size</label><input id="start-ctx" type="number" placeholder="default"></div>
+      <div class="form-group"><label>GPU Layers</label><input id="start-ngl" placeholder="default"></div>
     </div>
-    
-    <!-- vLLM parameters -->
-    <div id="params-vllm" style="display:none">
-      <h4 style="margin:12px 0 8px;color:var(--text2);font-size:12px">vLLM Parameters</h4>
-      <div class="form-row">
-        <div class="form-group"><label>Tensor Parallel Size</label><input id="start-tp" type="number" value="1"></div>
-        <div class="form-group"><label>Pipeline Parallel Size</label><input id="start-pp" type="number" value="1"></div>
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label>Max Model Len</label><input id="start-max-model-len" type="number" placeholder="auto"></div>
-        <div class="form-group"><label>GPU Memory Utilization</label><input id="start-gpu-mem-util" type="number" step="0.05" min="0" max="1" value="0.9"></div>
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label>Max Num Seqs</label><input id="start-max-num-seqs" type="number" value="64"></div>
-        <div class="form-group"><label>Max Num Batched Tokens</label><input id="start-max-num-batched-tokens" type="number" placeholder="auto"></div>
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label>Dtype</label><select id="start-dtype"><option value="">auto</option><option value="float16">float16</option><option value="bfloat16">bfloat16</option><option value="float32">float32</option></select></div>
-        <div class="form-group"><label>Quantization</label><select id="start-quantization"><option value="">none</option><option value="awq">AWQ</option><option value="gptq">GPTQ</option><option value="squeezellm">SqueezeLLM</option></select></div>
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label>Trust Remote Code</label><select id="start-trust-remote-code"><option value="false">No</option><option value="true">Yes</option></select></div>
-        <div class="form-group"><label>Chat Template</label><input id="start-chat-template" placeholder="path (optional)"></div>
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label>Seed</label><input id="start-seed" type="number" placeholder="random"></div>
-        <div class="form-group"><label>Disable Log Requests</label><select id="start-disable-log"><option value="false">No</option><option value="true">Yes</option></select></div>
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label>Enforce Eager</label><select id="start-enforce-eager"><option value="false">No</option><option value="true">Yes</option></select></div>
-        <div class="form-group"><label>Max Context Len Capture</label><input id="start-max-ctx-capture" type="number" placeholder="auto"></div>
-      </div>
+    <div class="form-row">
+      <div class="form-group"><label>Parallel Slots</label><input id="start-np" type="number" placeholder="default"></div>
+      <div class="form-group"><label>Tensor Parallel Size</label><input id="start-tp" type="number" placeholder="1"></div>
     </div>
-    
-    <!-- SGLang parameters -->
-    <div id="params-sglang" style="display:none">
-      <h4 style="margin:12px 0 8px;color:var(--text2);font-size:12px">SGLang Parameters</h4>
-      <div class="form-row">
-        <div class="form-group"><label>Tensor Parallel (TP)</label><input id="start-sglang-tp" type="number" value="1"></div>
-        <div class="form-group"><label>Mem Fraction Static</label><input id="start-mem-fraction" type="number" step="0.05" min="0" max="1" value="0.8"></div>
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label>Max Num Reqs</label><input id="start-max-num-reqs" type="number" value="64"></div>
-        <div class="form-group"><label>Num Nodes</label><input id="start-nnodes" type="number" value="1"></div>
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label>Chunked Prefill Size</label><input id="start-chunked-prefill" type="number" placeholder="auto"></div>
-        <div class="form-group"><label>Mem Cache Size</label><input id="start-mem-cache-size" type="number" placeholder="auto"></div>
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label>Token Logprob Threshold</label><input id="start-token-logprob" type="number" step="0.01" placeholder="auto"></div>
-        <div class="form-group"><label>Schedule Policy</label><select id="start-schedule-policy"><option value="">default</option><option value="lpm">lpm</option><option value="fcfs">fcfs</option><option value="dfs-weight">dfs-weight</option><option value="lof">lof</option><option value="priority">priority</option></select></div>
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label>Schedule Conservativeness</label><input id="start-schedule-conservativeness" type="number" step="0.1" value="1.0"></div>
-        <div class="form-group"><label>NCCL NVLS</label><select id="start-nccl-nvls"><option value="false">No</option><option value="true">Yes</option></select></div>
-      </div>
-      <div class="form-group"><label>Server Worker Path</label><input id="start-server-worker-path" placeholder="optional"></div>
+    <div class="form-row">
+      <div class="form-group"><label>GPU Memory Utilization</label><input id="start-gpu-mem-util" type="number" step="0.05" min="0" max="1" placeholder="0.9"></div>
+      <div class="form-group"><label>Max Model Len</label><input id="start-max-model-len" type="number" placeholder="auto"></div>
     </div>
-    
-    <!-- TGI parameters -->
-    <div id="params-tgi" style="display:none">
-      <h4 style="margin:12px 0 8px;color:var(--text2);font-size:12px">TGI Parameters</h4>
-      <div class="form-row">
-        <div class="form-group"><label>Model ID</label><input id="start-tgi-model-id" placeholder="HuggingFace model ID"></div>
-        <div class="form-group"><label>Num Shard</label><input id="start-tgi-num-shard" type="number" placeholder="auto"></div>
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label>Max Batch Prefill Tokens</label><input id="start-tgi-max-batch-prefill" type="number" value="4096"></div>
-        <div class="form-group"><label>Max Batch Total Tokens</label><input id="start-tgi-max-batch-total" type="number" placeholder="auto"></div>
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label>Max Concurrent Requests</label><input id="start-tgi-max-concurrent" type="number" value="64"></div>
-        <div class="form-group"><label>Max Input Length</label><input id="start-tgi-max-input" type="number" value="4096"></div>
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label>Max Total Tokens</label><input id="start-tgi-max-total" type="number" value="8192"></div>
-        <div class="form-group"><label>Quantize</label><select id="start-tgi-quantize"><option value="">none</option><option value="bitsandbytes-nf4">BitsAndBytes NF4</option><option value="bitsandbytes-fp4">BitsAndBytes FP4</option><option value="gptq">GPTQ</option><option value="awq">AWQ</option><option value="eetq">EETQ</option><option value="fp8">FP8</option></select></div>
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label>Dtype</label><select id="start-tgi-dtype"><option value="">auto</option><option value="float16">float16</option><option value="bfloat16">bfloat16</option></select></div>
-        <div class="form-group"><label>Sharded</label><select id="start-tgi-sharded"><option value="false">No</option><option value="true">Yes</option></select></div>
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label>CUDA Flash Attention</label><select id="start-tgi-flash-attn"><option value="true">Yes</option><option value="false">No</option></select></div>
-        <div class="form-group"><label>Disable Grammar</label><select id="start-tgi-disable-grammar"><option value="false">No</option><option value="true">Yes</option></select></div>
-      </div>
+    <div class="form-row">
+      <div class="form-group"><label>Dtype</label><select id="start-dtype"><option value="">default</option><option value="float16">float16</option><option value="bfloat16">bfloat16</option><option value="float32">float32</option></select></div>
+      <div class="form-group"><label>Quantization</label><select id="start-quantization"><option value="">default</option><option value="awq">AWQ</option><option value="gptq">GPTQ</option></select></div>
     </div>
-    
-    <!-- Ollama parameters -->
-    <div id="params-ollama" style="display:none">
-      <h4 style="margin:12px 0 8px;color:var(--text2);font-size:12px">Ollama Parameters</h4>
-      <div class="form-row">
-        <div class="form-group"><label>Num Parallel</label><input id="start-ollama-num-parallel" type="number" value="1"></div>
-        <div class="form-group"><label>Num GPU</label><input id="start-ollama-num-gpu" type="number" value="99"></div>
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label>Num Ctx</label><input id="start-ollama-num-ctx" type="number" value="2048"></div>
-        <div class="form-group"><label>Num Batch</label><input id="start-ollama-num-batch" type="number" value="512"></div>
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label>Low VRAM</label><select id="start-ollama-low-vram"><option value="false">No</option><option value="true">Yes</option></select></div>
-        <div class="form-group"><label>Flash Attention</label><select id="start-ollama-flash-attn"><option value="false">No</option><option value="true">Yes</option></select></div>
-      </div>
-    </div>
-    
-    <!-- TensorRT-LLM parameters -->
-    <div id="params-tensorrt_llm" style="display:none">
-      <h4 style="margin:12px 0 8px;color:var(--text2);font-size:12px">TensorRT-LLM Parameters</h4>
-      <div class="form-row">
-        <div class="form-group"><label>Max Batch Size</label><input id="start-trt-max-batch" type="number" value="8"></div>
-        <div class="form-group"><label>Max Input Len</label><input id="start-trt-max-input" type="number" value="2048"></div>
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label>Max Output Len</label><input id="start-trt-max-output" type="number" value="512"></div>
-        <div class="form-group"><label>Max Seq Len</label><input id="start-trt-max-seq" type="number" value="2560"></div>
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label>Dtype</label><select id="start-trt-dtype"><option value="float16">float16</option><option value="float32">float32</option><option value="int8">int8</option><option value="int4">int4</option></select></div>
-        <div class="form-group"><label>Deprecate Legacy</label><select id="start-trt-deprecate"><option value="true">Yes</option><option value="false">No</option></select></div>
-      </div>
-    </div>
-    
-    <!-- LMDeploy parameters -->
-    <div id="params-lmdeploy" style="display:none">
-      <h4 style="margin:12px 0 8px;color:var(--text2);font-size:12px">LMDeploy Parameters</h4>
-      <div class="form-row">
-        <div class="form-group"><label>Tensor Parallel (TP)</label><input id="start-lmdeploy-tp" type="number" value="1"></div>
-        <div class="form-group"><label>Session Length</label><input id="start-lmdeploy-session" type="number" value="2048"></div>
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label>Max Batch Size</label><input id="start-lmdeploy-max-batch" type="number" value="128"></div>
-        <div class="form-group"><label>Cache Max Entry Count</label><input id="start-lmdeploy-cache" type="number" step="0.1" value="0.5"></div>
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label>Quant Policy</label><select id="start-lmdeploy-quant"><option value="0">None</option><option value="4">W4A16</option><option value="8">W8A8</option></select></div>
-        <div class="form-group"><label>Rope Scaling Factor</label><input id="start-lmdeploy-rope" type="number" step="0.1" value="0"></div>
-      </div>
-    </div>
-    
-    <!-- OpenVINO parameters -->
-    <div id="params-openvino" style="display:none">
-      <h4 style="margin:12px 0 8px;color:var(--text2);font-size:12px">OpenVINO Parameters</h4>
-      <div class="form-row">
-        <div class="form-group"><label>Model Name</label><input id="start-ov-model-name" value="model"></div>
-        <div class="form-group"><label>Batch Size</label><input id="start-ov-batch" type="number" value="1"></div>
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label>Max Model Len</label><input id="start-ov-max-len" type="number" value="256"></div>
-        <div class="form-group"><label>NIREQ</label><input id="start-ov-nireq" type="number" value="1"></div>
-      </div>
-      <div class="form-group"><label>Plugin Config</label><input id="start-ov-plugin" placeholder="JSON format (optional)"></div>
-    </div>
-    
+    <div class="form-group"><label>Extra Args (CLI flags, space separated)</label><input id="start-extra-args" placeholder="--mlock --no-mmap -t 8"></div>
+
     <div class="modal-actions">
       <button class="btn-ghost" onclick="closeModal('modal-start')">Cancel</button>
       <button class="btn-primary" onclick="doStartInstance()">Start</button>
@@ -320,6 +157,6 @@
   </div>
 </div>
 
-<script src="/static/app.js"></script>
+<script src="/static/app.js?v=3"></script>
 </body>
 </html>

@@ -175,35 +175,24 @@ async def _test_model_dropdown_populated(page):
     count = await page.evaluate("() => document.getElementById('start-model').options.length")
     assert count >= 1
 
-async def _test_backend_params_switch(page):
+async def _test_modal_common_options(page):
+    """Start modal shows Common Options and Extra Args fields."""
     await page.goto(BASE, wait_until="networkidle", timeout=10000)
     await page.click('[data-page="instances"]')
     await page.wait_for_timeout(500)
     await page.click("text=+ Start New")
     await page.wait_for_selector("#modal-start.show", timeout=5000)
-    assert await page.is_visible("#params-llamacpp")
-    assert not await page.is_visible("#params-vllm")
-    await page.select_option("#start-backend", "vllm")
-    await page.wait_for_timeout(200)
-    assert not await page.is_visible("#params-llamacpp")
-    assert await page.is_visible("#params-vllm")
-
-async def _test_all_backend_params_sections(page):
-    await page.goto(BASE, wait_until="networkidle", timeout=10000)
-    await page.click('[data-page="instances"]')
-    await page.wait_for_timeout(500)
-    await page.click("text=+ Start New")
-    await page.wait_for_selector("#modal-start.show", timeout=5000)
-    for backend in ["llamacpp", "vllm", "sglang", "tgi", "ollama", "tensorrt_llm", "lmdeploy", "openvino"]:
-        # Skip disabled backends
-        is_disabled = await page.evaluate(f"""
-            () => document.querySelector('#start-backend option[value="{backend}"]')?.disabled ?? true
-        """)
-        if is_disabled:
-            continue
-        await page.select_option("#start-backend", backend)
-        await page.wait_for_timeout(100)
-        assert await page.is_visible(f"#params-{backend}"), f"Params section for {backend} not visible"
+    # Common Options section visible
+    assert await page.is_visible("#start-ctx")
+    assert await page.is_visible("#start-ngl")
+    assert await page.is_visible("#start-np")
+    assert await page.is_visible("#start-tp")
+    assert await page.is_visible("#start-gpu-mem-util")
+    assert await page.is_visible("#start-max-model-len")
+    assert await page.is_visible("#start-dtype")
+    assert await page.is_visible("#start-quantization")
+    # Extra Args field visible
+    assert await page.is_visible("#start-extra-args")
 
 
 # ---------------------------------------------------------------------------
@@ -414,8 +403,7 @@ ALL_WEB_TESTS = [
     ("modal_backend_all_options", _test_backend_dropdown_all_options),
     ("modal_unavailable_disabled", _test_unavailable_backends_disabled),
     ("modal_model_populated", _test_model_dropdown_populated),
-    ("modal_params_switch", _test_backend_params_switch),
-    ("modal_all_params_sections", _test_all_backend_params_sections),
+    ("modal_common_options", _test_modal_common_options),
     # Config
     ("config_page", _test_config_page),
     ("config_model_dir", _test_config_model_dir),

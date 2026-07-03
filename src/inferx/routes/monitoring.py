@@ -139,7 +139,7 @@ async def list_audit_logs(
     entries = audit.list_entries(action, target_type, limit, offset)
     return {
         "entries": [e.model_dump() for e in entries],
-        "total": len(audit._entries),
+        "total": audit.total_entries,
     }
 
 

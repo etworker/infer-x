@@ -5,7 +5,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from .models import BackendType, DefaultConfig
+from .models import DefaultConfig
+from .backends.registry import registry
 
 
 def guess_family(name: str) -> str | None:
@@ -23,22 +24,9 @@ def guess_quantization(name: str) -> str | None:
     return m.group(1).upper() if m else None
 
 
-# Maps BackendType -> config attribute name for binary paths
-BINARY_PATH_ATTRS: dict[BackendType, str] = {
-    BackendType.llamacpp: "llama_server_bin",
-    BackendType.vllm: "vllm_server_bin",
-    BackendType.sglang: "sglang_server_bin",
-    BackendType.tgi: "tgi_bin",
-    BackendType.ollama: "ollama_bin",
-    BackendType.tensorrt_llm: "tensorrt_llm_bin",
-    BackendType.lmdeploy: "lmdeploy_bin",
-    BackendType.openvino: "openvino_bin",
-}
-
-
-def get_binary_path(backend_type: BackendType, config: DefaultConfig) -> str:
+def get_binary_path(backend_type: Any, config: DefaultConfig) -> str:
     """Get the configured binary path for a backend."""
-    attr = BINARY_PATH_ATTRS.get(backend_type)
+    attr = registry.get_binary_config_attr(backend_type)
     if attr:
         return getattr(config, attr, "")
     return ""
@@ -46,4 +34,7 @@ def get_binary_path(backend_type: BackendType, config: DefaultConfig) -> str:
 
 def get_server_paths(config: DefaultConfig) -> dict[str, str]:
     """Get a dict mapping backend ID -> binary path for all backends."""
-    return {bt.value: get_binary_path(bt, config) for bt in BackendType}
+    return {
+        bt.value: get_binary_path(bt, config)
+        for bt in registry.backends
+    }

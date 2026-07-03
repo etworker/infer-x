@@ -90,6 +90,10 @@ class AuditLogger:
         entries = list(reversed(entries))
         return entries[offset:offset + limit]
 
+    @property
+    def total_entries(self) -> int:
+        return len(self._entries)
+
     def get_entry(self, entry_id: str) -> AuditEntry | None:
         for entry in self._entries:
             if entry.id == entry_id:
