@@ -116,11 +116,31 @@ class DefaultConfig(BaseModel):
     default_host: str = "0.0.0.0"
     max_instances: int = 4
     health_check_interval: int = 10
+    health_check_timeout: int = 5
+    startup_timeout_seconds: int = 120
+    shutdown_timeout_seconds: int = 10
     auto_restart: bool = True
     auto_restart_max_retries: int = 3
     auto_restart_delay: int = 5
     hf_mirror_url: str | None = "https://hf-mirror.com"
     download_max_concurrent: int = 2
+    # Model family -> repo template mapping for auto-download
+    hf_model_repos: dict[str, str] = Field(default_factory=lambda: {
+        "qwen2.5": "Qwen/Qwen2.5-{size}-Instruct",
+        "qwen3": "Qwen/Qwen3-{size}",
+        "qwen3.5": "Qwen/Qwen3.5-{size}",
+        "gemma-4": "google/gemma-4-{size}-it",
+        "llama": "meta-llama/Llama-{size}",
+        "mistral": "mistralai/Mistral-{size}",
+    })
+    ms_model_repos: dict[str, str] = Field(default_factory=lambda: {
+        "qwen2.5": "Qwen/Qwen2.5-{size}-Instruct",
+        "qwen3": "Qwen/Qwen3-{size}",
+        "qwen3.5": "Qwen/Qwen3.5-{size}",
+        "gemma-4": "AI-ModelScope/gemma-4-{size}-it",
+        "llama": "meta-llama/Llama-{size}",
+        "mistral": "mistralai/Mistral-{size}",
+    })
 
     # llama.cpp defaults
     default_ctx_size: int = 4096

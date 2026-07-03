@@ -14,11 +14,28 @@ config:
   default_host: 0.0.0.0
   max_instances: 4
   health_check_interval: 10
+  health_check_timeout: 5
+  startup_timeout_seconds: 120
+  shutdown_timeout_seconds: 10
   auto_restart: true
   auto_restart_max_retries: 3
   auto_restart_delay: 5
   hf_mirror_url: https://hf-mirror.com
   download_max_concurrent: 2
+  hf_model_repos:
+    qwen2.5: Qwen/Qwen2.5-{size}-Instruct
+    qwen3: Qwen/Qwen3-{size}
+    qwen3.5: Qwen/Qwen3.5-{size}
+    gemma-4: google/gemma-4-{size}-it
+    llama: meta-llama/Llama-{size}
+    mistral: mistralai/Mistral-{size}
+  ms_model_repos:
+    qwen2.5: Qwen/Qwen2.5-{size}-Instruct
+    qwen3: Qwen/Qwen3-{size}
+    qwen3.5: Qwen/Qwen3.5-{size}
+    gemma-4: AI-ModelScope/gemma-4-{size}-it
+    llama: meta-llama/Llama-{size}
+    mistral: mistralai/Mistral-{size}
   default_ctx_size: 4096
   default_n_gpu_layers: auto
   default_threads: null

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 import os
 import signal
 import socket
@@ -26,11 +25,10 @@ from .models import (
     InstanceStartRequest,
     InstanceStatus,
 )
+from .logging import logger
 from .monitor import ResourceMonitor
 from .params import resolve_params
 from .utils import guess_family, guess_quantization, get_binary_path
-
-logger = logging.getLogger("inferx")
 
 
 @dataclass
@@ -50,16 +48,23 @@ class InstanceManager:
             model_dir=config_manager.config.model_dir,
             hf_mirror_url=config_manager.config.hf_mirror_url,
             max_concurrent=config_manager.config.download_max_concurrent,
+            hf_model_repos=config_manager.config.hf_model_repos,
+            ms_model_repos=config_manager.config.ms_model_repos,
         )
         self._instances: dict[str, InstanceProcess] = {}
         self._ports_in_use: set = set()
         self._logs_dir = Path(__file__).parent / "logs"
         self._logs_dir.mkdir(exist_ok=True)
         self._model_cache = TTLCache(default_ttl=5.0)
+        self._http_client = httpx.AsyncClient(timeout=10)
 
     @property
     def monitor(self) -> ResourceMonitor:
         return self._monitor
+
+    @property
+    def http_client(self) -> httpx.AsyncClient:
+        return self._http_client
 
     @property
     def downloader(self) -> ModelDownloader:
@@ -74,7 +79,7 @@ class InstanceManager:
                 continue
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 try:
-                    s.bind(("127.0.0.1", port))
+                    s.bind((cfg.default_host, port))
                     return port
                 except OSError:
                     continue
@@ -264,7 +269,7 @@ class InstanceManager:
             extra_args=extra_args,
         )
 
-        logger.info("Starting instance %s (backend=%s): %s", inst_id, backend_type.value, " ".join(cmd))
+        logger.info("Starting instance {} (backend={}): {}", inst_id, backend_type.value, " ".join(cmd))
 
         env = os.environ.copy()
         env.update(backend.get_env(binary))
@@ -321,39 +326,39 @@ class InstanceManager:
         cfg = self._config.config
         url = f"http://{inst.info.host}:{inst.info.port}"
 
-        logger.warning("[DEBUG-MONITOR] _wait_and_monitor started for %s (pid=%s)", inst_id, inst.info.pid)
+        logger.debug("wait_and_monitor started for {} (pid={})", inst_id, inst.info.pid)
 
         # wait for server to be ready
-        for i in range(60):
+        max_iters = cfg.startup_timeout_seconds
+        for i in range(max_iters):
             await asyncio.sleep(1)
             alive = self._monitor.is_process_alive(inst.info.pid)
             if not alive:
-                logger.warning("[DEBUG-MONITOR] %s process DEAD during startup (iter %d)", inst_id, i)
+                logger.warning("{} process died during startup", inst_id)
                 inst.info.status = InstanceStatus.error
                 return
             try:
-                async with httpx.AsyncClient(timeout=2) as c:
+                async with httpx.AsyncClient(timeout=cfg.health_check_timeout) as c:
                     r = await c.get(f"{url}/health")
                     if r.status_code == 200:
-                        logger.warning("[DEBUG-MONITOR] %s health OK at iter %d", inst_id, i)
+                        logger.debug("{} health OK at iter {}", inst_id, i)
                         inst.info.status = InstanceStatus.running
                         break
             except Exception:
                 continue
         else:
-            logger.warning("[DEBUG-MONITOR] %s health check exhausted 60 iters, forcing running", inst_id)
+            logger.warning("{} health check exhausted {}s, forcing running", inst_id, max_iters)
             inst.info.status = InstanceStatus.running
 
-        logger.warning("[DEBUG-MONITOR] %s entering health loop, status=%s", inst_id, inst.info.status)
+        logger.debug("{} entering health loop, status={}", inst_id, inst.info.status)
 
         # periodic health check
         while inst.info.status == InstanceStatus.running:
             await asyncio.sleep(cfg.health_check_interval)
             alive = self._monitor.is_process_alive(inst.info.pid)
-            logger.warning("[DEBUG-MONITOR] %s periodic check: alive=%s", inst_id, alive)
             if not alive:
                 inst.info.status = InstanceStatus.error
-                logger.warning("Instance %s process died", inst_id)
+                logger.warning("Instance {} process died", inst_id)
                 if cfg.auto_restart and inst.info.restart_count < cfg.auto_restart_max_retries:
                     inst.info.restart_count += 1
                     await asyncio.sleep(cfg.auto_restart_delay)
@@ -383,21 +388,17 @@ class InstanceManager:
         # restart
         try:
             await self.start_instance(old_req)
-            logger.info("Instance %s restarted successfully", inst_id)
+            logger.info("Instance {} restarted successfully", inst_id)
         except Exception as e:
-            logger.error("Failed to restart instance %s: %s", inst_id, e)
+            logger.error("Failed to restart instance {}: {}", inst_id, e)
 
     def _kill_process(self, inst: InstanceProcess) -> None:
-        import traceback as _tb
-        logger.warning("[DEBUG-KILL] _kill_process called for pid=%s, id=%s, caller:\n%s",
-                       inst.process.pid if inst.process else None,
-                       inst.info.id,
-                       "".join(_tb.format_stack()[-4:-1]))
+        logger.debug("killing process pid={} for instance {}", inst.process.pid if inst.process else None, inst.info.id)
         if inst.process and inst.process.poll() is None:
             try:
                 # Kill the entire process tree
                 os.killpg(os.getpgid(inst.process.pid), signal.SIGTERM)
-                inst.process.wait(timeout=10)
+                inst.process.wait(timeout=cfg.shutdown_timeout_seconds)
             except (subprocess.TimeoutExpired, ProcessLookupError, OSError):
                 try:
                     os.killpg(os.getpgid(inst.process.pid), signal.SIGKILL)
@@ -407,10 +408,7 @@ class InstanceManager:
                 pass
 
     async def stop_instance(self, inst_id: str) -> bool:
-        import traceback as _tb
-        logger.warning("[DEBUG-STOP] stop_instance called for id=%s, caller:\n%s",
-                       inst_id,
-                       "".join(_tb.format_stack()[-4:-1]))
+        logger.debug("stop_instance called for id={}", inst_id)
         inst = self._instances.get(inst_id)
         if not inst:
             return False
@@ -473,4 +471,5 @@ class InstanceManager:
         inst_ids = list(self._instances.keys())
         for inst_id in inst_ids:
             await self.stop_instance(inst_id)
+        await self._http_client.aclose()
         logger.info("All instances stopped")

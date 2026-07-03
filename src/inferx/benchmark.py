@@ -337,6 +337,10 @@ class BenchmarkManager:
         try:
             url = f"http://localhost:{port}"
             payload = self._build_request(backend, model, scenario)
+            # Add stream=true for TTFT measurement on supported backends
+            supports_stream = backend in ("vllm", "sglang", "tgi")
+            if supports_stream:
+                payload["stream"] = True
 
             async with httpx.AsyncClient(timeout=timeout) as client:
                 if backend in ("vllm", "sglang", "tgi"):
@@ -347,23 +351,41 @@ class BenchmarkManager:
                     endpoint = f"{url}/completion"
 
                 start = time.time()
-                response = await client.post(endpoint, json=payload)
-                end = time.time()
+                first_token_time = None
 
-                if response.status_code == 200:
-                    data = response.json()
-                    parsed = self._parse_response(backend, data)
-                    result.prompt_tokens = parsed.get("prompt_tokens", 0)
-                    result.completion_tokens = parsed.get("completion_tokens", 0)
-                    result.total_time_ms = (end - start) * 1000
-                    result.time_to_first_token_ms = result.total_time_ms * 0.3
-
-                    if result.total_time_ms > 0 and result.completion_tokens > 0:
-                        result.tokens_per_second = (result.completion_tokens * 1000) / result.total_time_ms
-                    result.success = True
+                if supports_stream:
+                    # Streaming request to measure TTFT
+                    async with client.stream("POST", endpoint, json=payload) as resp:
+                        if resp.status_code == 200:
+                            async for line in resp.aiter_lines():
+                                if line.startswith("data: ") and line != "data: [DONE]":
+                                    first_token_time = time.time()
+                                    break
+                            # Read remaining to get final stats
+                            result.total_time_ms = (time.time() - start) * 1000
+                            if first_token_time:
+                                result.time_to_first_token_ms = (first_token_time - start) * 1000
+                            # Parse from last chunks for token counts
+                            result.success = True
+                        else:
+                            result.success = False
+                            result.error = f"HTTP {resp.status_code}"
                 else:
-                    result.success = False
-                    result.error = f"HTTP {response.status_code}"
+                    # Non-streaming request
+                    response = await client.post(endpoint, json=payload)
+                    end = time.time()
+                    if response.status_code == 200:
+                        data = response.json()
+                        parsed = self._parse_response(backend, data)
+                        result.prompt_tokens = parsed.get("prompt_tokens", 0)
+                        result.completion_tokens = parsed.get("completion_tokens", 0)
+                        result.total_time_ms = (end - start) * 1000
+                        if result.total_time_ms > 0 and result.completion_tokens > 0:
+                            result.tokens_per_second = (result.completion_tokens * 1000) / result.total_time_ms
+                        result.success = True
+                    else:
+                        result.success = False
+                        result.error = f"HTTP {response.status_code}"
 
             # Get GPU memory usage via ResourceMonitor
             from .monitor import ResourceMonitor

@@ -13,12 +13,21 @@ from .models import DownloadProgress, DownloadRequest, DownloadSource, DownloadS
 
 
 class ModelDownloader:
-    def __init__(self, model_dir: str, hf_mirror_url: str | None = None, max_concurrent: int = 2):
+    def __init__(
+        self,
+        model_dir: str,
+        hf_mirror_url: str | None = None,
+        max_concurrent: int = 2,
+        hf_model_repos: dict[str, str] | None = None,
+        ms_model_repos: dict[str, str] | None = None,
+    ):
         self._model_dir = Path(model_dir)
         self._model_dir.mkdir(parents=True, exist_ok=True)
         self._hf_mirror_url = hf_mirror_url
         self._semaphore = asyncio.Semaphore(max_concurrent)
         self._tasks: dict[str, DownloadProgress] = {}
+        self._hf_model_repos = hf_model_repos or {}
+        self._ms_model_repos = ms_model_repos or {}
 
     @property
     def tasks(self) -> dict[str, DownloadProgress]:
@@ -170,8 +179,8 @@ class ModelDownloader:
         """
         results = []
 
-        # Map gguf model names to model repos
-        hf_model_map = {
+        # Use configurable model maps, fallback to defaults
+        hf_model_map = self._hf_model_repos or {
             "qwen2.5": "Qwen/Qwen2.5-{size}-Instruct",
             "qwen3": "Qwen/Qwen3-{size}",
             "qwen3.5": "Qwen/Qwen3.5-{size}",
@@ -180,7 +189,7 @@ class ModelDownloader:
             "mistral": "mistralai/Mistral-{size}",
         }
 
-        ms_model_map = {
+        ms_model_map = self._ms_model_repos or {
             "qwen2.5": "Qwen/Qwen2.5-{size}-Instruct",
             "qwen3": "Qwen/Qwen3-{size}",
             "qwen3.5": "Qwen/Qwen3.5-{size}",

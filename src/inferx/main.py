@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -13,14 +12,9 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from .config import ConfigManager
+from .logging import logger
 from .manager import InstanceManager
 from .router import init_routes, router
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-)
-logger = logging.getLogger("inferx")
 
 _config: ConfigManager | None = None
 _manager: InstanceManager | None = None
@@ -33,7 +27,7 @@ async def lifespan(app: FastAPI):
     _manager = InstanceManager(_config)
     init_routes(_config, _manager)
     logger.info(
-        "Manager started: model_dir=%s, port_range=%d-%d",
+        "Manager started: model_dir={}, port_range={}-{}",
         _config.config.model_dir,
         _config.config.port_range_start,
         _config.config.port_range_end,

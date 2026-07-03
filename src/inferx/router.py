@@ -424,12 +424,12 @@ async def proxy_to_instance(inst_id: str, path: str, body: dict | None = None):
 
     url = f"http://{inst.host}:{inst.port}/{path}"
     try:
-        async with httpx.AsyncClient(timeout=120) as client:
-            if body:
-                resp = await client.post(url, json=body)
-            else:
-                resp = await client.get(url)
-            return resp.json()
+        client = _mgr().http_client
+        if body:
+            resp = await client.post(url, json=body, timeout=120)
+        else:
+            resp = await client.get(url, timeout=120)
+        return resp.json()
     except httpx.TimeoutException:
         raise HTTPException(504, "Backend request timed out")
     except Exception as e:
