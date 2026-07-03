@@ -416,6 +416,7 @@ tr:hover td{background:var(--surface2)}
 <script>
 const API = '/api';
 let currentPage = 'dashboard';
+let cachedBackends = null;
 
 // ---- Navigation ----
 document.querySelectorAll('.nav-item').forEach(el => {
@@ -534,9 +535,10 @@ function drawChart(canvasId, data, maxVal, color, fillColor) {
 }
 
 async function renderDashboard() {
-  const [info, health, instData] = await Promise.all([api('/system/info'), api('/system/health'), api('/instances')]);
+  const [info, health, instData, backendsResp] = await Promise.all([api('/system/info'), api('/system/health'), api('/instances'), api('/system/backends')]);
   const gpu = info.gpus[0];
   const instances = instData.instances || [];
+  const backends = backendsResp.backends || [];
 
   // push to history
   if (gpu) {
@@ -616,6 +618,21 @@ async function renderDashboard() {
             <div style="font-size:36px;font-weight:700;color:var(--green)" id="cv-inst-running">0</div>
             <div style="font-size:12px;color:var(--text2);margin-top:4px">running of <span id="cv-inst-total">0</span></div>
           </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><h2>Engine Status</h2><span style="font-size:12px;color:var(--text2)">${backends.filter(b=>b.installed).length}/${backends.length} available</span></div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px">
+          ${backends.map(b => `
+            <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--surface2);border-radius:var(--radius);${b.installed?'':'opacity:.5'}">
+              <div style="width:8px;height:8px;border-radius:50%;background:${b.installed?'var(--green)':'var(--red)'};flex-shrink:0"></div>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:13px;font-weight:500">${b.name}</div>
+                <div style="font-size:11px;color:var(--text2)">${b.installed?'Installed':'Not installed'}</div>
+              </div>
+              <span style="font-size:10px;color:var(--text2)">${b.check_type}</span>
+            </div>
+          `).join('')}
         </div>
       </div>
       <div class="card" id="dash-inst-card">
@@ -845,8 +862,32 @@ async function renderInstances() {
   psel.innerHTML = '<option value="">None</option>' + Object.keys(presets).map(n => `<option value="${n}">${n}</option>`).join('');
 }
 
+async function loadBackends() {
+  try {
+    const resp = await api('/system/backends');
+    cachedBackends = resp.backends || [];
+  } catch(e) {}
+}
+
+function applyBackendStatus() {
+  if (!cachedBackends) return;
+  const sel = document.getElementById('start-backend');
+  if (!sel) return;
+  for (const opt of sel.options) {
+    const b = cachedBackends.find(x => x.id === opt.value);
+    if (b && !b.installed) {
+      opt.disabled = true;
+      opt.textContent = opt.textContent.split(' (')[0] + ' (Not installed)';
+    } else {
+      opt.disabled = false;
+      opt.textContent = opt.textContent.split(' (')[0];
+    }
+  }
+}
+
 function openStartModal() {
   openModal('modal-start');
+  applyBackendStatus();
 }
 
 async function quickStart(model) {
@@ -1069,7 +1110,17 @@ async function deletePreset(name) {
 
 // ---- Config ----
 async function renderConfig() {
-  const cfg = await api('/system/config');
+  const [cfg, backendsResp] = await Promise.all([api('/system/config'), api('/system/backends')]);
+  const backends = backendsResp.backends || [];
+  const beMap = {};
+  backends.forEach(b => { beMap[b.id] = b; });
+  const statusBadge = (id) => {
+    const b = beMap[id];
+    if (!b) return '';
+    return b.installed
+      ? '<span style="display:inline-block;margin-left:8px;padding:1px 8px;border-radius:10px;font-size:11px;font-weight:500;background:rgba(0,184,148,.15);color:var(--green)">Installed</span>'
+      : '<span style="display:inline-block;margin-left:8px;padding:1px 8px;border-radius:10px;font-size:11px;font-weight:500;background:rgba(225,112,85,.15);color:var(--red)">Not installed</span>';
+  };
   const p = document.getElementById('page-config');
   p.innerHTML = `
     <div class="card-header"><h2>Configuration</h2></div>
@@ -1081,18 +1132,38 @@ async function renderConfig() {
             <option value="llamacpp" ${cfg.default_backend === 'llamacpp' ? 'selected' : ''}>llama.cpp</option>
             <option value="vllm" ${cfg.default_backend === 'vllm' ? 'selected' : ''}>vLLM</option>
             <option value="sglang" ${cfg.default_backend === 'sglang' ? 'selected' : ''}>SGLang</option>
+            <option value="tgi" ${cfg.default_backend === 'tgi' ? 'selected' : ''}>TGI</option>
+            <option value="ollama" ${cfg.default_backend === 'ollama' ? 'selected' : ''}>Ollama</option>
+            <option value="tensorrt_llm" ${cfg.default_backend === 'tensorrt_llm' ? 'selected' : ''}>TensorRT-LLM</option>
+            <option value="lmdeploy" ${cfg.default_backend === 'lmdeploy' ? 'selected' : ''}>LMDeploy</option>
+            <option value="openvino" ${cfg.default_backend === 'openvino' ? 'selected' : ''}>OpenVINO</option>
           </select>
         </div>
       </div>
-      
-      <h4 style="margin:16px 0 8px;color:var(--text2);font-size:13px">llama.cpp</h4>
+
+      <h4 style="margin:16px 0 8px;color:var(--text2);font-size:13px">llama.cpp ${statusBadge('llamacpp')}</h4>
       <div class="form-group"><label>Server Binary</label><input id="cfg-llama-bin" value="${cfg.llama_server_bin}"></div>
-      
-      <h4 style="margin:16px 0 8px;color:var(--text2);font-size:13px">vLLM</h4>
+
+      <h4 style="margin:16px 0 8px;color:var(--text2);font-size:13px">vLLM ${statusBadge('vllm')}</h4>
       <div class="form-group"><label>Server Command</label><input id="cfg-vllm-bin" value="${cfg.vllm_server_bin}"></div>
-      
-      <h4 style="margin:16px 0 8px;color:var(--text2);font-size:13px">SGLang</h4>
+
+      <h4 style="margin:16px 0 8px;color:var(--text2);font-size:13px">SGLang ${statusBadge('sglang')}</h4>
       <div class="form-group"><label>Server Command</label><input id="cfg-sglang-bin" value="${cfg.sglang_server_bin}"></div>
+
+      <h4 style="margin:16px 0 8px;color:var(--text2);font-size:13px">TGI ${statusBadge('tgi')}</h4>
+      <div class="form-group"><label>Binary</label><input id="cfg-tgi-bin" value="${cfg.tgi_bin || ''}"></div>
+
+      <h4 style="margin:16px 0 8px;color:var(--text2);font-size:13px">Ollama ${statusBadge('ollama')}</h4>
+      <div class="form-group"><label>Binary</label><input id="cfg-ollama-bin" value="${cfg.ollama_bin || ''}"></div>
+
+      <h4 style="margin:16px 0 8px;color:var(--text2);font-size:13px">TensorRT-LLM ${statusBadge('tensorrt_llm')}</h4>
+      <div class="form-group"><label>Binary</label><input id="cfg-trt-bin" value="${cfg.tensorrt_llm_bin || ''}"></div>
+
+      <h4 style="margin:16px 0 8px;color:var(--text2);font-size:13px">LMDeploy ${statusBadge('lmdeploy')}</h4>
+      <div class="form-group"><label>Binary</label><input id="cfg-lmdeploy-bin" value="${cfg.lmdeploy_bin || ''}"></div>
+
+      <h4 style="margin:16px 0 8px;color:var(--text2);font-size:13px">OpenVINO ${statusBadge('openvino')}</h4>
+      <div class="form-group"><label>Binary</label><input id="cfg-openvino-bin" value="${cfg.openvino_bin || ''}"></div>
       
       <h4 style="margin:16px 0 8px;color:var(--text2);font-size:13px">General</h4>
       <div class="form-row">
@@ -1132,6 +1203,11 @@ async function saveConfig() {
     llama_server_bin: document.getElementById('cfg-llama-bin').value,
     vllm_server_bin: document.getElementById('cfg-vllm-bin').value,
     sglang_server_bin: document.getElementById('cfg-sglang-bin').value,
+    tgi_bin: document.getElementById('cfg-tgi-bin')?.value || null,
+    ollama_bin: document.getElementById('cfg-ollama-bin')?.value || null,
+    tensorrt_llm_bin: document.getElementById('cfg-trt-bin')?.value || null,
+    lmdeploy_bin: document.getElementById('cfg-lmdeploy-bin')?.value || null,
+    openvino_bin: document.getElementById('cfg-openvino-bin')?.value || null,
     port_range_start: parseInt(document.getElementById('cfg-port-start').value),
     port_range_end: parseInt(document.getElementById('cfg-port-end').value),
     default_ctx_size: parseInt(document.getElementById('cfg-ctx').value),
@@ -1552,6 +1628,7 @@ async function deleteBatch(batchId) {
 }
 
 // ---- Init ----
+loadBackends();
 renderDashboard();
 
 // Auto-refresh every 2s for realtime feel

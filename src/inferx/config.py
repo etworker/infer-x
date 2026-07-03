@@ -34,8 +34,8 @@ class ConfigManager:
 
     def _save(self) -> None:
         data = {
-            "config": self._config.model_dump(),
-            "presets": {name: p.model_dump(exclude={"name"}) for name, p in self._presets.items()},
+            "config": self._config.model_dump(mode="json"),
+            "presets": {name: p.model_dump(exclude={"name"}, mode="json") for name, p in self._presets.items()},
         }
         self._path.parent.mkdir(parents=True, exist_ok=True)
         with open(self._path, "w", encoding="utf-8") as f:
