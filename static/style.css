@@ -1,0 +1,94 @@
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0f1117;--surface:#1a1d27;--surface2:#242836;--border:#2e3345;--text:#e4e6ed;--text2:#8b8fa3;--accent:#6c5ce7;--accent2:#a29bfe;--green:#00b894;--red:#e17055;--yellow:#fdcb6e;--blue:#74b9ff;--radius:8px}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+a{color:var(--accent2);text-decoration:none}
+button{cursor:pointer;border:none;font-family:inherit;font-size:13px;border-radius:var(--radius);padding:6px 14px;transition:all .15s}
+.btn-primary{background:var(--accent);color:#fff}.btn-primary:hover{background:#5b4bd5}
+.btn-danger{background:var(--red);color:#fff}.btn-danger:hover{background:#d63031}
+.btn-ghost{background:transparent;color:var(--text2);border:1px solid var(--border)}.btn-ghost:hover{border-color:var(--accent);color:var(--accent2)}
+.btn-success{background:var(--green);color:#fff}.btn-success:hover{background:#00a884}
+.btn-sm{padding:4px 10px;font-size:12px}
+input,select{background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:var(--radius);font-size:13px;outline:none;width:100%}
+input:focus,select:focus{border-color:var(--accent)}
+label{font-size:12px;color:var(--text2);margin-bottom:4px;display:block}
+
+/* Layout */
+.app{display:flex;min-height:100vh}
+.sidebar{width:220px;background:var(--surface);border-right:1px solid var(--border);padding:16px 0;flex-shrink:0;position:sticky;top:0;height:100vh}
+.sidebar h1{font-size:15px;padding:0 20px 16px;color:var(--accent2);font-weight:600}
+.sidebar h1 span{color:var(--text2);font-weight:400;font-size:11px;display:block;margin-top:2px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:10px 20px;color:var(--text2);font-size:13px;cursor:pointer;transition:all .15s;border-left:3px solid transparent}
+.nav-item:hover{background:var(--surface2);color:var(--text)}
+.nav-item.active{background:var(--surface2);color:var(--accent2);border-left-color:var(--accent)}
+.nav-item svg{width:16px;height:16px;flex-shrink:0}
+.main{flex:1;padding:24px 32px;max-width:1200px}
+
+/* Cards */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:16px}
+.card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.card-header h2{font-size:15px;font-weight:600}
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+.stat-card{background:var(--surface2);border-radius:var(--radius);padding:14px}
+.stat-card .label{font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px}
+.stat-card .value{font-size:22px;font-weight:600;margin-top:4px}
+.stat-card .sub{font-size:11px;color:var(--text2);margin-top:2px}
+
+/* Table */
+.table-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;padding:8px 12px;border-bottom:1px solid var(--border)}
+td{padding:10px 12px;border-bottom:1px solid var(--border);font-size:13px}
+tr:hover td{background:var(--surface2)}
+
+/* Status badges */
+.badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:500}
+.badge-running{background:rgba(0,184,148,.15);color:var(--green)}
+.badge-starting{background:rgba(253,203,110,.15);color:var(--yellow)}
+.badge-stopped,.badge-error{background:rgba(225,112,85,.15);color:var(--red)}
+.badge-stopping{background:rgba(139,143,163,.15);color:var(--text2)}
+
+/* Progress bar */
+.progress{height:6px;background:var(--surface2);border-radius:3px;overflow:hidden;margin-top:6px}
+.progress-bar{height:100%;background:var(--accent);border-radius:3px;transition:width .3s}
+
+/* GPU bar */
+.gpu-bar{height:20px;background:var(--surface2);border-radius:4px;overflow:hidden;position:relative}
+.gpu-bar-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--blue));border-radius:4px;transition:width .5s}
+.gpu-bar-text{position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:11px;color:#fff;font-weight:500}
+
+/* Realtime charts */
+.chart-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px}
+.chart-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px}
+.chart-card .chart-title{font-size:12px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between}
+.chart-card .chart-title .chart-val{font-size:18px;font-weight:600;color:var(--text)}
+.chart-card canvas{width:100%;height:80px;display:block;border-radius:4px}
+@media(max-width:900px){.chart-grid{grid-template-columns:1fr}}
+
+/* Modal */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100;align-items:center;justify-content:center}
+.modal-overlay.show{display:flex}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;width:500px;max-width:90vw;max-height:80vh;overflow-y:auto}
+.modal h3{margin-bottom:16px;font-size:16px}
+.form-group{margin-bottom:14px}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:20px}
+
+/* Toast */
+.toast{position:fixed;bottom:20px;right:20px;padding:12px 20px;border-radius:var(--radius);font-size:13px;z-index:200;animation:slideIn .3s}
+.toast-ok{background:var(--green);color:#fff}
+.toast-err{background:var(--red);color:#fff}
+@keyframes slideIn{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
+
+/* Log viewer */
+.log-box{background:#0d0f14;border:1px solid var(--border);border-radius:var(--radius);padding:12px;font-family:"Fira Code",monospace;font-size:12px;max-height:300px;overflow-y:auto;line-height:1.6;color:#9ca3af;white-space:pre-wrap;word-break:break-all}
+
+/* Tab */
+.tabs{display:flex;gap:4px;margin-bottom:16px;border-bottom:1px solid var(--border);padding-bottom:0}
+.tab{padding:8px 16px;font-size:13px;color:var(--text2);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+.tab.active{color:var(--accent2);border-bottom-color:var(--accent)}
+
+/* Responsive */
+@media(max-width:768px){
+.sidebar{width:56px;overflow:hidden}.sidebar h1,.nav-item span{display:none}.nav-item{justify-content:center;padding:12px}
+.main{padding:16px}
+}
