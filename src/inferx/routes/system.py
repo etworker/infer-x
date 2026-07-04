@@ -115,10 +115,6 @@ async def export_config():
     }
 
 
-class ImportRequest:
-    pass
-
-
 from pydantic import BaseModel
 
 

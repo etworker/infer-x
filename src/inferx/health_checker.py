@@ -54,8 +54,8 @@ class HealthChecker:
                 except Exception:
                     continue
             else:
-                logger.warning("{} health check exhausted {}s, forcing running", inst.info.id, max_iters)
-                inst.info.status = InstanceStatus.running
+                logger.warning("{} health check exhausted {}s, setting error", inst.info.id, max_iters)
+                inst.info.status = InstanceStatus.error
 
             logger.debug("{} entering health loop, status={}", inst.info.id, inst.info.status)
 

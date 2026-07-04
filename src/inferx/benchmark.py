@@ -215,8 +215,6 @@ class BenchmarkManager:
             status="pending",
             total_tasks=len(tasks),
             completed_tasks=0,
-            models=config.models,
-            backends=config.backends,
             started_at=datetime.now().isoformat(),
         )
         self._active_batches[batch_id] = progress

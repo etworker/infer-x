@@ -83,19 +83,23 @@ class ProcessLifecycle:
         logger.info("Starting instance {} (backend={}): {}", inst_id, backend_type.value, " ".join(cmd))
 
         env = os.environ.copy()
-        env.update(backend.get_env(binary))
+        env.update(backend.get_env(binary, host, port))
 
         try:
             stderr_path = self._logs_dir / f"{inst_id}.stderr"
             stderr_file = open(stderr_path, "w")
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                env=env,
-                stdin=asyncio.subprocess.DEVNULL,
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=stderr_file,
-                start_new_session=True,
-            )
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    env=env,
+                    stdin=asyncio.subprocess.DEVNULL,
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=stderr_file,
+                    start_new_session=True,
+                )
+            except Exception:
+                stderr_file.close()
+                raise
         except FileNotFoundError as e:
             raise RuntimeError(
                 f"Failed to start {backend_type.value}: binary not found. "

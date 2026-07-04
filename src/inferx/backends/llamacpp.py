@@ -65,14 +65,17 @@ class LlamaCppBackend(Backend):
         add_flag(cmd, params, "numa", "--numa")
         add_flag(cmd, params, "cont_batching", "--cont-batching")
         if flash_attn and flash_attn != "none":
-            cmd.extend(["-fa", str(flash_attn)])
+            if flash_attn is True:
+                cmd.append("-fa")
+            else:
+                cmd.extend(["-fa", str(flash_attn)])
         if sleep_idle is not None and sleep_idle > 0:
             cmd.extend(["--sleep-idle-seconds", str(sleep_idle)])
 
         cmd.extend(extra_args)
         return cmd
 
-    def get_env(self, binary_path: str) -> dict[str, str]:
+    def get_env(self, binary_path: str, host: str = "localhost", port: int = 8080) -> dict[str, str]:
         return {"LD_LIBRARY_PATH": str(Path(binary_path).parent)}
 
     @classmethod

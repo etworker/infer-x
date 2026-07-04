@@ -86,11 +86,11 @@ class AlertManager:
         rule = self._rules.get(rule_id)
         if not rule:
             return None
-        for key, value in updates.items():
-            if hasattr(rule, key):
-                setattr(rule, key, value)
+        updated_data = rule.model_dump()
+        updated_data.update(updates)
+        self._rules[rule_id] = AlertRule(**updated_data)
         self._save_rules()
-        return rule
+        return self._rules[rule_id]
 
     def delete_rule(self, rule_id: str) -> bool:
         if rule_id in self._rules:

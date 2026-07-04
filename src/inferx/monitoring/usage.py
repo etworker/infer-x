@@ -45,6 +45,8 @@ class UsageTracker:
         self._model_stats: dict[str, ModelStats] = {}
         self._latencies: list[float] = []
         self._hourly_counts: dict[str, int] = defaultdict(int)
+        self._successful_requests: int = 0
+        self._failed_requests: int = 0
         self._load_stats()
 
     def _load_stats(self):
@@ -54,6 +56,8 @@ class UsageTracker:
                 with open(stats_file) as f:
                     data = json.load(f)
                 self._hourly_counts = defaultdict(int, data.get("hourly_counts", {}))
+                self._successful_requests = data.get("successful_requests", 0)
+                self._failed_requests = data.get("failed_requests", 0)
                 for ms_data in data.get("model_stats", []):
                     ms = ModelStats(**ms_data)
                     self._model_stats[ms.model_name] = ms
@@ -66,6 +70,8 @@ class UsageTracker:
         data = {
             "model_stats": [ms.model_dump() for ms in self._model_stats.values()],
             "hourly_counts": dict(self._hourly_counts),
+            "successful_requests": self._successful_requests,
+            "failed_requests": self._failed_requests,
         }
         with open(stats_file, "w") as f:
             json.dump(data, f, indent=2)
@@ -86,6 +92,17 @@ class UsageTracker:
 
         if len(self._latencies) > 10000:
             self._latencies = self._latencies[-10000:]
+
+        # 清理超过 30 天的小时计数，防止无限增长
+        cutoff = (now - timedelta(days=30)).strftime("%Y-%m-%d-%H")
+        stale_keys = [k for k in self._hourly_counts if k < cutoff]
+        for k in stale_keys:
+            del self._hourly_counts[k]
+
+        if success:
+            self._successful_requests += 1
+        else:
+            self._failed_requests += 1
 
         key = f"{model}:{backend}"
         if key not in self._model_stats:
@@ -113,7 +130,10 @@ class UsageTracker:
         latencies = sorted(self._latencies) if self._latencies else [0]
         n = len(latencies)
         return RequestStats(
-            total_requests=total, total_tokens_in=tokens_in, total_tokens_out=tokens_out,
+            total_requests=total,
+            successful_requests=self._successful_requests,
+            failed_requests=self._failed_requests,
+            total_tokens_in=tokens_in, total_tokens_out=tokens_out,
             avg_latency_ms=sum(latencies) / n if n else 0,
             p50_latency_ms=latencies[n // 2] if n else 0,
             p95_latency_ms=latencies[int(n * 0.95)] if n else 0,

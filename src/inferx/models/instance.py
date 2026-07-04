@@ -35,6 +35,7 @@ class InstanceInfo(BaseModel):
     ram_usage_mb: float | None = None
     extra_args: list[str] = Field(default_factory=list)
     restart_count: int = 0
+    tags: dict[str, str] = Field(default_factory=dict)
 
 
 class InstanceList(BaseModel):

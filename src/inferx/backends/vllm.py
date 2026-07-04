@@ -61,7 +61,7 @@ class VLLMBackend(Backend):
         cmd.extend(extra_args)
         return cmd
 
-    def get_env(self, binary_path: str) -> dict[str, str]:
+    def get_env(self, binary_path: str, host: str = "localhost", port: int = 8080) -> dict[str, str]:
         return {}
 
     @classmethod
@@ -84,15 +84,12 @@ class VLLMBackend(Backend):
                 continue
 
             config_file = p / "config.json"
-            has_safetensors = any(p.glob("*.safetensors"))
-            has_bin = any(p.glob("*.bin"))
+            safetensors_files = list(p.glob("*.safetensors"))
+            bin_files = list(p.glob("*.bin"))
 
-            if config_file.exists() and (has_safetensors or has_bin):
-                total_size = 0
-                for f in p.glob("*.safetensors"):
-                    total_size += f.stat().st_size
-                for f in p.glob("*.bin"):
-                    total_size += f.stat().st_size
+            if config_file.exists() and (safetensors_files or bin_files):
+                total_size = sum(f.stat().st_size for f in safetensors_files) + \
+                             sum(f.stat().st_size for f in bin_files)
 
                 models.append({
                     "name": p.name,

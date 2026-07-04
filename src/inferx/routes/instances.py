@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 import httpx
 
-from ..models import InstanceInfo, InstanceList, InstanceLogs, InstanceStartRequest
+from ..models import InstanceInfo, InstanceList, InstanceLogs, InstanceStartRequest, LogEntry
 from . import get_audit_logger, get_manager
 
 router = APIRouter()
@@ -80,7 +80,8 @@ async def restart_instance(inst_id: str):
 @router.get("/instances/{inst_id}/logs")
 async def instance_logs(inst_id: str, lines: int = Query(default=100, ge=1, le=10000)):
     logs = get_manager().get_instance_logs(inst_id, lines)
-    return InstanceLogs(instance_id=inst_id, logs=[], total_lines=len(logs))
+    log_entries = [LogEntry(timestamp="", level="INFO", message=line) for line in logs]
+    return InstanceLogs(instance_id=inst_id, logs=log_entries, total_lines=len(logs))
 
 
 @router.get("/instances/{inst_id}/logs/raw")
@@ -121,18 +122,24 @@ async def instance_error(inst_id: str):
 
 @router.post("/instances/{inst_id}/tags")
 async def add_instance_tags(inst_id: str, tags: dict[str, str]):
-    inst = get_manager().get_instance(inst_id)
+    mgr = get_manager()
+    inst = mgr.get_instance(inst_id)
     if not inst:
         raise HTTPException(404, f"Instance not found: {inst_id}")
-    return {"instance_id": inst_id, "tags": tags}
+    # 直接更新实例的 tags（需要通过 process_manager 修改）
+    proc_inst = mgr._proc_mgr.instances.get(inst_id)
+    if proc_inst:
+        proc_inst.info.tags.update(tags)
+    return {"instance_id": inst_id, "tags": inst.tags if inst else tags}
 
 
 @router.get("/instances/{inst_id}/tags")
 async def get_instance_tags(inst_id: str):
-    inst = get_manager().get_instance(inst_id)
+    mgr = get_manager()
+    inst = mgr.get_instance(inst_id)
     if not inst:
         raise HTTPException(404, f"Instance not found: {inst_id}")
-    return {"instance_id": inst_id, "tags": {}}
+    return {"instance_id": inst_id, "tags": inst.tags}
 
 
 # --- Batch operations ---
@@ -205,7 +212,7 @@ async def stop_all_instances():
 # --- Proxy ---
 
 @router.api_route("/proxy/{inst_id}/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
-async def proxy_to_instance(inst_id: str, path: str, body: dict | None = None):
+async def proxy_to_instance(inst_id: str, path: str, request: Request):
     """Proxy request to an instance backend."""
     mgr = get_manager()
     inst = mgr.get_instance(inst_id)
@@ -217,10 +224,17 @@ async def proxy_to_instance(inst_id: str, path: str, body: dict | None = None):
     url = f"http://{inst.host}:{inst.port}/{path}"
     try:
         client = mgr.http_client
-        if body:
-            resp = await client.post(url, json=body, timeout=120)
-        else:
+        body = None
+        if request.method in ("POST", "PUT"):
+            body = await request.json()
+        if request.method == "GET":
             resp = await client.get(url, timeout=120)
+        elif request.method == "POST":
+            resp = await client.post(url, json=body, timeout=120)
+        elif request.method == "PUT":
+            resp = await client.put(url, json=body, timeout=120)
+        elif request.method == "DELETE":
+            resp = await client.delete(url, timeout=120)
         return resp.json()
     except httpx.TimeoutException:
         raise HTTPException(504, "Backend request timed out")

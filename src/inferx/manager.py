@@ -100,10 +100,17 @@ class InstanceManager:
             n_parallel=inst.info.n_parallel,
             extra_args=inst.info.extra_args,
         )
+        port = inst.info.port
+        host = inst.info.host
+        extra_args = inst.info.extra_args
         await self._proc_mgr.kill(inst)
-        self._port_mgr.release(inst.info.port)
         del self._proc_mgr.instances[inst_id]
-        return await self.start_instance(old_req)
+        # 端口不释放，直接复用，避免竞争条件
+        try:
+            return await self._proc_mgr.start(old_req, port, host, extra_args)
+        except Exception:
+            self._port_mgr.release(port)
+            raise
 
     def list_instances(self) -> list[InstanceInfo]:
         return self._proc_mgr.list_all()

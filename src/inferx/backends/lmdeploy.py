@@ -54,7 +54,7 @@ class LMDeployBackend(Backend):
         cmd.extend(extra_args)
         return cmd
 
-    def get_env(self, binary_path: str) -> dict[str, str]:
+    def get_env(self, binary_path: str, host: str = "localhost", port: int = 8080) -> dict[str, str]:
         return {}
 
     @classmethod

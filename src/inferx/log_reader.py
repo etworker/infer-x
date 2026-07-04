@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import collections
 from pathlib import Path
 
 
@@ -17,8 +18,8 @@ class LogReader:
             return []
         try:
             with open(log_file, encoding="utf-8", errors="replace") as f:
-                all_lines = f.readlines()
-            return [line.rstrip("\n") for line in all_lines[-lines:]]
+                result = collections.deque(f, maxlen=lines)
+            return [line.rstrip("\n") for line in result]
         except Exception:
             return []
 
@@ -28,7 +29,7 @@ class LogReader:
             return []
         try:
             with open(stderr_path, encoding="utf-8", errors="replace") as f:
-                all_lines = f.readlines()
-            return [line.rstrip("\n") for line in all_lines[-lines:]]
+                result = collections.deque(f, maxlen=lines)
+            return [line.rstrip("\n") for line in result]
         except Exception:
             return []

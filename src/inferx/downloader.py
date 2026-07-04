@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 import time
 import uuid
 from pathlib import Path
@@ -26,6 +27,7 @@ class ModelDownloader:
         self._hf_mirror_url = hf_mirror_url
         self._semaphore = asyncio.Semaphore(max_concurrent)
         self._tasks: dict[str, DownloadProgress] = {}
+        self._async_tasks: dict[str, asyncio.Task] = {}
         self._hf_model_repos = hf_model_repos or {}
         self._ms_model_repos = ms_model_repos or {}
 
@@ -45,6 +47,9 @@ class ModelDownloader:
             return False
         task.status = DownloadStatus.failed
         task.error = "Cancelled by user"
+        async_task = self._async_tasks.get(task_id)
+        if async_task and not async_task.done():
+            async_task.cancel()
         return True
 
     async def start_download(self, req: DownloadRequest) -> DownloadProgress:
@@ -57,7 +62,8 @@ class ModelDownloader:
             status=DownloadStatus.pending,
         )
         self._tasks[task_id] = progress
-        asyncio.create_task(self._run_download(task_id, req))
+        async_task = asyncio.create_task(self._run_download(task_id, req))
+        self._async_tasks[task_id] = async_task
         return progress
 
     async def _run_download(self, task_id: str, req: DownloadRequest) -> None:
@@ -91,17 +97,23 @@ class ModelDownloader:
         if "/" not in repo:
             raise ValueError("repo must be in 'user/repo' format")
 
-        env = os.environ.copy()
-        if mirror and self._hf_mirror_url:
-            env["HF_ENDPOINT"] = self._hf_mirror_url
-
         def _download() -> str:
-            kwargs: dict[str, Any] = {"repo_id": repo}
-            if filename:
-                kwargs["filename"] = filename
-            if req.quantization:
-                kwargs["revision"] = req.quantization
-            return hf_hub_download(**kwargs, local_dir=str(self._model_dir), force_download=True)
+            old_endpoint = os.environ.get("HF_ENDPOINT")
+            if mirror and self._hf_mirror_url:
+                os.environ["HF_ENDPOINT"] = self._hf_mirror_url
+            try:
+                kwargs: dict[str, Any] = {"repo_id": repo}
+                if filename:
+                    kwargs["filename"] = filename
+                if req.quantization:
+                    kwargs["revision"] = req.quantization
+                return hf_hub_download(**kwargs, local_dir=str(self._model_dir), force_download=True)
+            finally:
+                if mirror and self._hf_mirror_url:
+                    if old_endpoint is not None:
+                        os.environ["HF_ENDPOINT"] = old_endpoint
+                    else:
+                        os.environ.pop("HF_ENDPOINT", None)
 
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(None, _download)
@@ -208,7 +220,6 @@ class ModelDownloader:
 
             for family in hf_model_map:
                 if family in name_lower:
-                    import re
                     size_match = re.search(r'(\d+\.?\d*[bB])', gguf_name)
                     if size_match:
                         size = size_match.group(1).replace('B', 'b').replace('b', 'B')
@@ -262,19 +273,23 @@ class ModelDownloader:
         return results
 
     async def _download_hf_auto(self, repo: str, repo_name: str) -> str:
-        import os
-
         from huggingface_hub import snapshot_download
 
-        env = os.environ.copy()
-        if self._hf_mirror_url:
-            env["HF_ENDPOINT"] = self._hf_mirror_url
-
         def _download():
-            return snapshot_download(
-                repo_id=repo,
-                local_dir=str(self._model_dir / repo_name),
-            )
+            old_endpoint = os.environ.get("HF_ENDPOINT")
+            if self._hf_mirror_url:
+                os.environ["HF_ENDPOINT"] = self._hf_mirror_url
+            try:
+                return snapshot_download(
+                    repo_id=repo,
+                    local_dir=str(self._model_dir / repo_name),
+                )
+            finally:
+                if self._hf_mirror_url:
+                    if old_endpoint is not None:
+                        os.environ["HF_ENDPOINT"] = old_endpoint
+                    else:
+                        os.environ.pop("HF_ENDPOINT", None)
 
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, _download)

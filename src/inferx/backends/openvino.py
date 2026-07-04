@@ -52,7 +52,7 @@ class OpenVINOBackend(Backend):
         cmd.extend(extra_args)
         return cmd
 
-    def get_env(self, binary_path: str) -> dict[str, str]:
+    def get_env(self, binary_path: str, host: str = "localhost", port: int = 8080) -> dict[str, str]:
         return {}
 
     @classmethod
@@ -70,11 +70,13 @@ class OpenVINOBackend(Backend):
             return models
         for p in sorted(model_dir.iterdir()):
             if p.is_dir():
-                if any(p.glob("*.xml")) or any(p.glob("*.bin")):
+                if any(p.glob("*.xml")):
+                    total_size = sum(f.stat().st_size for f in p.glob("*.xml")) + \
+                                 sum(f.stat().st_size for f in p.glob("*.bin"))
                     models.append({
                         "name": p.name,
                         "path": str(p),
-                        "size_mb": 0,
+                        "size_mb": round(total_size / (1024 * 1024), 1) if total_size > 0 else 0,
                         "family": self._guess_family(p.name),
                         "quantization": None,
                     })
