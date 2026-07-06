@@ -2,16 +2,14 @@
 
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
 from typing import Any
 
-from .base import Backend
-from ..models import BackendType
-from .registry import register_backend
+from ._utils import discover_hf_models
+from .base import Backend, register_backend
 
 
-@register_backend(BackendType.tgi)
+@register_backend
 class TGIBackend(Backend):
     """HuggingFace Text Generation Inference backend."""
     backend_id = "tgi"
@@ -31,69 +29,22 @@ class TGIBackend(Backend):
         extra_args: list[str],
     ) -> list[str]:
         binary = params.get("binary", "text-generation-launcher")
-        model_id = params.get("tgi_model_id") or model_path
-
-        cmd = [binary, "--model-id", str(model_id)]
+        cmd = [binary, "--model-id", str(model_path)]
 
         if host and host != "0.0.0.0":
             cmd.extend(["--hostname", host])
         cmd.extend(["--port", str(port)])
 
-        if params.get("tgi_max_batch_prefill_tokens"):
-            cmd.extend(["--max-batch-prefill-tokens", str(params["tgi_max_batch_prefill_tokens"])])
-        if params.get("tgi_max_batch_total_tokens"):
-            cmd.extend(["--max-batch-total-tokens", str(params["tgi_max_batch_total_tokens"])])
-        if params.get("tgi_max_concurrent_requests"):
-            cmd.extend(["--max-concurrent-requests", str(params["tgi_max_concurrent_requests"])])
-        if params.get("tgi_max_input_length"):
-            cmd.extend(["--max-input-length", str(params["tgi_max_input_length"])])
-        if params.get("tgi_max_total_tokens"):
-            cmd.extend(["--max-total-tokens", str(params["tgi_max_total_tokens"])])
-        if params.get("tgi_sharded"):
-            cmd.append("--sharded")
-        if params.get("tgi_num_shard"):
-            cmd.extend(["--num-shard", str(params["tgi_num_shard"])])
-        if params.get("tgi_quantize"):
-            cmd.extend(["--quantize", params["tgi_quantize"]])
-        if params.get("tgi_dtype") and params["tgi_dtype"] != "auto":
-            cmd.extend(["--dtype", params["tgi_dtype"]])
-        if params.get("tgi_cuda_flash_attention") is False:
-            cmd.append("--no-cuda-flash-attention")
-        if params.get("tgi_disable_grammar"):
-            cmd.append("--disable-grammar")
-
         cmd.extend(extra_args)
         return cmd
 
-    def get_env(self, binary_path: str, host: str = "localhost", port: int = 8080) -> dict[str, str]:
+    def get_env(self, binary_path: str) -> dict[str, str]:
         return {}
 
     @classmethod
     def is_installed(cls) -> bool:
-        try:
-            proc = subprocess.run(
-                ["docker", "images", "-q", "ghcr.io/huggingface/text-generation-inference"],
-                capture_output=True, text=True, timeout=5,
-            )
-            return bool(proc.stdout.strip())
-        except Exception:
-            return False
+        import shutil
+        return shutil.which("text-generation-launcher") is not None
 
     def get_model_paths(self, model_dir: Path) -> list[dict[str, Any]]:
-        models = []
-        if not model_dir.exists():
-            return models
-        for p in sorted(model_dir.iterdir()):
-            if p.is_dir():
-                config_file = p / "config.json"
-                has_safetensors = any(p.glob("*.safetensors"))
-                if config_file.exists() and has_safetensors:
-                    total_size = sum(f.stat().st_size for f in p.glob("*.safetensors"))
-                    models.append({
-                        "name": p.name,
-                        "path": str(p),
-                        "size_mb": round(total_size / (1024 * 1024), 1) if total_size > 0 else 0,
-                        "family": self._guess_family(p.name),
-                        "quantization": None,
-                    })
-        return models
+        return discover_hf_models(model_dir, self._guess_family, self._guess_quantization)

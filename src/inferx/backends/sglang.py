@@ -5,13 +5,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ._utils import resolve_binary
-from .base import Backend
-from ..models import BackendType
-from .registry import register_backend
+from ._utils import discover_hf_models
+from .base import Backend, register_backend
 
 
-@register_backend(BackendType.sglang)
+@register_backend
 class SGLangBackend(Backend):
     """SGLang inference backend."""
     backend_id = "sglang"
@@ -30,31 +28,20 @@ class SGLangBackend(Backend):
         params: dict[str, Any],
         extra_args: list[str],
     ) -> list[str]:
-        cmd = resolve_binary(params.get("binary", "python -m sglang.launch_server"))
+        binary = params.get("binary", "python -m sglang.launch_server")
+        cmd = binary.split()
+        cmd.extend(["--model-path", str(model_path), "--host", host, "--port", str(port)])
 
-        cmd.extend([
-            "--model-path", str(model_path),
-            "--host", host,
-            "--port", str(port),
-        ])
-
-        if params.get("tp") and params["tp"] > 1:
-            cmd.extend(["--tp", str(params["tp"])])
-        if params.get("mem_fraction_static") and params["mem_fraction_static"] < 1.0:
-            cmd.extend(["--mem-fraction-static", str(params["mem_fraction_static"])])
-        if params.get("chat_template"):
-            cmd.extend(["--chat-template", params["chat_template"]])
-        if params.get("nnodes") and params["nnodes"] > 1:
-            cmd.extend(["--nnodes", str(params["nnodes"])])
+        if params.get("tensor_parallel_size") and params["tensor_parallel_size"] > 1:
+            cmd.extend(["--tp", str(params["tensor_parallel_size"])])
+        if params.get("gpu_memory_utilization") and params["gpu_memory_utilization"] < 1.0:
+            cmd.extend(["--mem-fraction-static", str(params["gpu_memory_utilization"])])
 
         cmd.extend(extra_args)
         return cmd
 
-    def get_env(self, binary_path: str, host: str = "localhost", port: int = 8080) -> dict[str, str]:
-        return {
-            "SGLANG_KERNEL_DISABLE_JIT": "1",
-            "SGL_KERNEL_DISABLE_JIT": "1",
-        }
+    def get_env(self, binary_path: str) -> dict[str, str]:
+        return {}
 
     @classmethod
     def is_installed(cls) -> bool:
@@ -66,29 +53,4 @@ class SGLangBackend(Backend):
             return False
 
     def get_model_paths(self, model_dir: Path) -> list[dict[str, Any]]:
-        """Discover HuggingFace model directories."""
-        models = []
-        if not model_dir.exists():
-            return models
-
-        for p in sorted(model_dir.iterdir()):
-            if not p.is_dir():
-                continue
-
-            config_file = p / "config.json"
-            safetensors_files = list(p.glob("*.safetensors"))
-            bin_files = list(p.glob("*.bin"))
-
-            if config_file.exists() and (safetensors_files or bin_files):
-                total_size = sum(f.stat().st_size for f in safetensors_files) + \
-                             sum(f.stat().st_size for f in bin_files)
-
-                models.append({
-                    "name": p.name,
-                    "path": str(p),
-                    "size_mb": round(total_size / (1024 * 1024), 1) if total_size > 0 else 0,
-                    "family": self._guess_family(p.name),
-                    "quantization": self._guess_quantization(p.name),
-                })
-
-        return models
+        return discover_hf_models(model_dir, self._guess_family, self._guess_quantization)

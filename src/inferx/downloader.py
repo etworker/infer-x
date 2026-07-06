@@ -5,12 +5,34 @@ from __future__ import annotations
 import asyncio
 import os
 import re
+import threading
 import time
 import uuid
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 from .models import DownloadProgress, DownloadRequest, DownloadSource, DownloadStatus
+
+_hf_endpoint_lock = threading.Lock()
+
+
+@contextmanager
+def _hf_endpoint_env(url: str | None):
+    """Thread-safe context manager for temporarily setting HF_ENDPOINT."""
+    if not url:
+        yield
+        return
+    with _hf_endpoint_lock:
+        old = os.environ.get("HF_ENDPOINT")
+        os.environ["HF_ENDPOINT"] = url
+        try:
+            yield
+        finally:
+            if old is not None:
+                os.environ["HF_ENDPOINT"] = old
+            else:
+                os.environ.pop("HF_ENDPOINT", None)
 
 
 class ModelDownloader:
@@ -97,25 +119,18 @@ class ModelDownloader:
         if "/" not in repo:
             raise ValueError("repo must be in 'user/repo' format")
 
+        mirror_url = self._hf_mirror_url if mirror else None
+
         def _download() -> str:
-            old_endpoint = os.environ.get("HF_ENDPOINT")
-            if mirror and self._hf_mirror_url:
-                os.environ["HF_ENDPOINT"] = self._hf_mirror_url
-            try:
+            with _hf_endpoint_env(mirror_url):
                 kwargs: dict[str, Any] = {"repo_id": repo}
                 if filename:
                     kwargs["filename"] = filename
                 if req.quantization:
                     kwargs["revision"] = req.quantization
                 return hf_hub_download(**kwargs, local_dir=str(self._model_dir), force_download=True)
-            finally:
-                if mirror and self._hf_mirror_url:
-                    if old_endpoint is not None:
-                        os.environ["HF_ENDPOINT"] = old_endpoint
-                    else:
-                        os.environ.pop("HF_ENDPOINT", None)
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         result = await loop.run_in_executor(None, _download)
         progress.save_path = str(result)
         progress.progress_pct = 100.0
@@ -143,7 +158,7 @@ class ModelDownloader:
                 return str(Path(result) / filename)
             return str(result)
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         result = await loop.run_in_executor(None, _download)
         progress.save_path = result
         progress.progress_pct = 100.0
@@ -191,7 +206,6 @@ class ModelDownloader:
         """
         results = []
 
-        # Use configurable model maps, fallback to defaults
         hf_model_map = self._hf_model_repos or {
             "qwen2.5": "Qwen/Qwen2.5-{size}-Instruct",
             "qwen3": "Qwen/Qwen3-{size}",
@@ -247,13 +261,11 @@ class ModelDownloader:
                 results.append({"gguf": gguf_name, "repo": hf_repo, "status": "exists", "path": str(target_dir)})
                 continue
 
-            # Try download with fallback
             downloaded = False
 
-            # Try HuggingFace first (faster)
             if source in ("hf", "auto"):
                 try:
-                    result = await self._download_hf_auto(hf_repo, repo_name)
+                    result = await self._download_snapshot(hf_repo, repo_name, use_mirror=False)
                     results.append({"gguf": gguf_name, "repo": hf_repo, "status": "downloaded", "path": result, "source": "hf"})
                     downloaded = True
                 except Exception as e:
@@ -261,7 +273,6 @@ class ModelDownloader:
                         results.append({"gguf": gguf_name, "repo": hf_repo, "status": "error", "error": str(e)})
                         downloaded = True
 
-            # Fallback to ModelScope if HF failed
             if not downloaded and source in ("ms", "auto"):
                 try:
                     result = await self._download_modelscope_auto(ms_repo, repo_name)
@@ -272,26 +283,19 @@ class ModelDownloader:
 
         return results
 
-    async def _download_hf_auto(self, repo: str, repo_name: str) -> str:
+    async def _download_snapshot(self, repo: str, repo_name: str, use_mirror: bool = False) -> str:
         from huggingface_hub import snapshot_download
 
+        mirror_url = self._hf_mirror_url if use_mirror else None
+
         def _download():
-            old_endpoint = os.environ.get("HF_ENDPOINT")
-            if self._hf_mirror_url:
-                os.environ["HF_ENDPOINT"] = self._hf_mirror_url
-            try:
+            with _hf_endpoint_env(mirror_url):
                 return snapshot_download(
                     repo_id=repo,
                     local_dir=str(self._model_dir / repo_name),
                 )
-            finally:
-                if self._hf_mirror_url:
-                    if old_endpoint is not None:
-                        os.environ["HF_ENDPOINT"] = old_endpoint
-                    else:
-                        os.environ.pop("HF_ENDPOINT", None)
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, _download)
 
     async def _download_modelscope_auto(self, repo: str, repo_name: str) -> str:
@@ -307,5 +311,5 @@ class ModelDownloader:
                 local_dir=str(self._model_dir / repo_name),
             )
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, _download)

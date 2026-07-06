@@ -5,9 +5,6 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from .models import DefaultConfig
-from .backends.registry import registry
-
 
 def guess_family(name: str) -> str | None:
     """Guess model family from filename."""
@@ -24,17 +21,21 @@ def guess_quantization(name: str) -> str | None:
     return m.group(1).upper() if m else None
 
 
-def get_binary_path(backend_type: Any, config: DefaultConfig) -> str:
+def get_binary_path(backend_type: Any, config: Any) -> str:
     """Get the configured binary path for a backend."""
-    attr = registry.get_binary_config_attr(backend_type)
+    from .backends.base import get_backend
+    backend = get_backend(backend_type)
+    attr = getattr(backend, "binary_config_attr", None)
     if attr:
         return getattr(config, attr, "")
     return ""
 
 
-def get_server_paths(config: DefaultConfig) -> dict[str, str]:
+def get_server_paths(config: Any) -> dict[str, str]:
     """Get a dict mapping backend ID -> binary path for all backends."""
+    from .backends.base import get_all_backends_status
+    backends = get_all_backends_status()
     return {
-        bt.value: get_binary_path(bt, config)
-        for bt in registry.backends
+        b["id"]: get_binary_path(b["id"], config)
+        for b in backends
     }

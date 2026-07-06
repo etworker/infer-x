@@ -23,14 +23,17 @@ class ConfigManager:
         if not self._path.exists():
             self._save()
             return
-        with open(self._path, encoding="utf-8") as f:
-            data = yaml.safe_load(f) or {}
-        cfg_data = data.get("config", {})
-        if cfg_data:
-            self._config = DefaultConfig(**cfg_data)
-        presets_data = data.get("presets", {})
-        for name, p in presets_data.items():
-            self._presets[name] = Preset(name=name, **p)
+        try:
+            with open(self._path, encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+            cfg_data = data.get("config", {})
+            if cfg_data:
+                self._config = DefaultConfig(**cfg_data)
+            presets_data = data.get("presets", {})
+            for name, p in presets_data.items():
+                self._presets[name] = Preset(name=name, **p)
+        except Exception:
+            self._config = DefaultConfig()
 
     def _save(self) -> None:
         data = {
@@ -38,8 +41,10 @@ class ConfigManager:
             "presets": {name: p.model_dump(exclude={"name"}, mode="json") for name, p in self._presets.items()},
         }
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        with open(self._path, "w", encoding="utf-8") as f:
+        tmp_path = self._path.with_suffix(".tmp")
+        with open(tmp_path, "w", encoding="utf-8") as f:
             yaml.dump(data, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
+        tmp_path.replace(self._path)
 
     @property
     def config(self) -> DefaultConfig:

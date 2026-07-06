@@ -339,23 +339,33 @@ function onDlSourceChange() {
   document.getElementById('dl-url-group').style.display = s === 'url' ? '' : 'none';
 }
 
-async function doDownload() {
+function onDlPageSourceChange() {
+  const s = document.getElementById('dl-page-source').value;
+  document.getElementById('dl-page-repo-group').style.display = s === 'url' ? 'none' : '';
+  document.getElementById('dl-page-url-group').style.display = s === 'url' ? '' : 'none';
+}
+
+async function _doDownload(prefix, onSuccess) {
+  const g = (id) => document.getElementById(prefix + id)?.value || null;
   const body = {
-    source: document.getElementById('dl-source').value,
-    repo: document.getElementById('dl-repo').value || null,
-    filename: document.getElementById('dl-file').value || null,
-    url: document.getElementById('dl-url').value || null,
-    save_name: document.getElementById('dl-save').value || null,
+    source: g('source'),
+    repo: g('repo') || null,
+    filename: g('file') || null,
+    url: g('url') || null,
+    save_name: g('save') || null,
   };
   try {
     await api('/models/download', { method: 'POST', body: JSON.stringify(body) });
     toast('Download started');
-    closeModal('modal-download');
+    onSuccess();
   } catch (e) { toast(e.message, false); }
 }
 
+async function doDownload() {
+  await _doDownload('dl-', () => closeModal('modal-download'));
+}
+
 // ---- Download Page ----
-let dlPollTimer = null;
 
 async function renderDownload() {
   const tasks = await api('/models/download/status');
@@ -402,9 +412,9 @@ async function renderDownload() {
               <span style="font-weight:500">${t.repo || t.filename || t.save_path || t.task_id}</span>
               <span class="badge badge-${t.status === 'completed' ? 'running' : t.status === 'failed' ? 'error' : 'starting'}" style="margin-left:8px">${t.status}</span>
             </div>
-            <span style="font-size:12px;color:var(--text2)">${t.progress_pct.toFixed(1)}%</span>
+            <span style="font-size:12px;color:var(--text2)">${(t.progress_pct ?? 0).toFixed(1)}%</span>
           </div>
-          <div class="progress"><div class="progress-bar" style="width:${t.progress_pct}%"></div></div>
+          <div class="progress"><div class="progress-bar" style="width:${t.progress_pct ?? 0}%"></div></div>
           ${t.error ? `<div style="color:var(--red);font-size:12px;margin-top:4px">${t.error}</div>` : ''}
           ${t.save_path ? `<div style="font-size:11px;color:var(--text2);margin-top:4px">${t.save_path}</div>` : ''}
         </div>
@@ -420,18 +430,7 @@ function onDlPageSourceChange() {
 }
 
 async function doDlPageDownload() {
-  const body = {
-    source: document.getElementById('dl-page-source').value,
-    repo: document.getElementById('dl-page-repo').value || null,
-    filename: document.getElementById('dl-page-file').value || null,
-    url: document.getElementById('dl-page-url').value || null,
-    save_name: document.getElementById('dl-page-save').value || null,
-  };
-  try {
-    await api('/models/download', { method: 'POST', body: JSON.stringify(body) });
-    toast('Download started');
-    renderDownload();
-  } catch (e) { toast(e.message, false); }
+  await _doDownload('dl-page-', () => renderDownload());
 }
 
 // ---- Instances ----
@@ -463,7 +462,7 @@ async function renderInstances() {
           <div class="stat-card"><div class="label">Backend</div><div class="value" style="font-size:14px">${inst.backend || 'llamacpp'}</div></div>
           <div class="stat-card"><div class="label">Port</div><div class="value" style="font-size:16px">${inst.port}</div></div>
           <div class="stat-card"><div class="label">PID</div><div class="value" style="font-size:16px">${inst.pid || '-'}</div></div>
-          <div class="stat-card"><div class="label">Context</div><div class="value" style="font-size:16px">${inst.ctx_size.toLocaleString()}</div></div>
+          <div class="stat-card"><div class="label">Context</div><div class="value" style="font-size:16px">${(inst.ctx_size ?? 4096).toLocaleString()}</div></div>
           <div class="stat-card"><div class="label">RAM Usage</div><div class="value" style="font-size:16px">${inst.ram_usage_mb ? fmtMB(inst.ram_usage_mb) : '-'}</div></div>
           <div class="stat-card"><div class="label">Started</div><div class="value" style="font-size:14px">${ago(inst.started_at)}</div></div>
         </div>
@@ -507,13 +506,11 @@ function openStartModal() {
 }
 
 async function quickStart(model) {
-  // Switch to instances page and open modal with model pre-selected
   document.querySelector('[data-page="instances"]').click();
-  setTimeout(() => {
-    const sel = document.getElementById('start-model');
-    if (sel) sel.value = model;
-    openModal('modal-start');
-  }, 300);
+  await renderInstances();
+  const sel = document.getElementById('start-model');
+  if (sel) sel.value = model;
+  openModal('modal-start');
 }
 
 async function doStartInstance() {

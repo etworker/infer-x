@@ -1,13 +1,11 @@
 """Comprehensive tests for benchmark module."""
 
 import pytest
-from pathlib import Path
 from inferx.benchmark import (
-    BenchmarkConfig,
-    BenchmarkResult,
     BatchBenchmarkReport,
+    BenchmarkConfig,
     BenchmarkManager,
-    SingleBenchmarkResult,
+    BenchmarkResult,
 )
 from inferx.monitor import ResourceMonitor
 
@@ -64,24 +62,6 @@ class TestBenchmarkResult:
             scenario="test", gpu_memory_used_mb=8000.0,
         )
         assert result.gpu_memory_used_mb == 8000.0
-
-
-class TestSingleBenchmarkResult:
-    def test_creation(self):
-        result = SingleBenchmarkResult(model="m", backend="vllm")
-        assert result.model == "m"
-        assert result.results == []
-        assert result.avg_tokens_per_second == 0.0
-        assert result.success is True
-
-    def test_with_results(self):
-        result = SingleBenchmarkResult(
-            model="m", backend="vllm",
-            avg_tokens_per_second=45.0, avg_ttft_ms=200.0,
-            max_gpu_memory_mb=12000.0,
-        )
-        assert result.avg_tokens_per_second == 45.0
-        assert result.max_gpu_memory_mb == 12000.0
 
 
 class TestBatchBenchmarkReport:

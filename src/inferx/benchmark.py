@@ -47,18 +47,6 @@ class BenchmarkResult(BaseModel):
     error: str | None = None
 
 
-class SingleBenchmarkResult(BaseModel):
-    """Result for one model+backend combination."""
-    model: str
-    backend: str
-    results: list[BenchmarkResult] = []
-    avg_tokens_per_second: float = 0.0
-    avg_ttft_ms: float = 0.0
-    max_gpu_memory_mb: float = 0.0
-    success: bool = True
-    error: str | None = None
-
-
 class BatchBenchmarkReport(BaseModel):
     """Complete batch benchmark report with all results."""
     id: str

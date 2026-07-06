@@ -1,7 +1,6 @@
 """Comprehensive tests for API endpoints."""
 
 import pytest
-from pathlib import Path
 from fastapi.testclient import TestClient
 from inferx.main import app
 from inferx.config import ConfigManager
@@ -220,57 +219,6 @@ class TestPresets:
         r = client.delete("/api/presets/nonexistent")
         assert r.status_code == 404
 
-
-# ---------------------------------------------------------------------------
-# Alert endpoints
-# ---------------------------------------------------------------------------
-
-class TestAlerts:
-    def test_list_rules(self, client):
-        r = client.get("/api/alerts/rules")
-        assert r.status_code == 200
-        assert "rules" in r.json()
-
-    def test_create_rule(self, client):
-        r = client.post("/api/alerts/rules", json={
-            "name": "test-rule", "metric": "gpu_memory_pct",
-            "condition": "gt", "threshold": 90.0,
-        })
-        assert r.status_code == 200
-        rule_id = r.json()["id"]
-        # Cleanup
-        client.delete(f"/api/alerts/rules/{rule_id}")
-
-    def test_list_alerts(self, client):
-        r = client.get("/api/alerts")
-        assert r.status_code == 200
-        assert "alerts" in r.json()
-
-    def test_check_alerts(self, client):
-        r = client.get("/api/alerts/check")
-        assert r.status_code == 200
-        assert "new_alerts" in r.json()
-
-
-# ---------------------------------------------------------------------------
-# Audit endpoints
-# ---------------------------------------------------------------------------
-
-class TestAudit:
-    def test_list(self, client):
-        r = client.get("/api/audit")
-        assert r.status_code == 200
-        data = r.json()
-        assert "entries" in data
-        assert "total" in data
-
-    def test_stats(self, client):
-        r = client.get("/api/audit/stats")
-        assert r.status_code == 200
-        data = r.json()
-        assert "total_entries" in data
-
-
 # ---------------------------------------------------------------------------
 # Export/Import
 # ---------------------------------------------------------------------------
@@ -283,24 +231,6 @@ class TestExportImport:
         assert "config" in data
         assert "presets" in data
         assert "exported_at" in data
-
-
-# ---------------------------------------------------------------------------
-# Usage stats
-# ---------------------------------------------------------------------------
-
-class TestUsageStats:
-    def test_overview(self, client):
-        r = client.get("/api/stats/overview")
-        assert r.status_code == 200
-
-    def test_models(self, client):
-        r = client.get("/api/stats/models")
-        assert r.status_code == 200
-
-    def test_hourly(self, client):
-        r = client.get("/api/stats/hourly")
-        assert r.status_code == 200
 
 
 # ---------------------------------------------------------------------------

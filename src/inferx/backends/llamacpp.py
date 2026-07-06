@@ -7,13 +7,10 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from ._utils import add_flag
-from .base import Backend
-from ..models import BackendType
-from .registry import register_backend
+from .base import Backend, register_backend
 
 
-@register_backend(BackendType.llamacpp)
+@register_backend
 class LlamaCppBackend(Backend):
     """llama.cpp inference backend."""
     backend_id = "llamacpp"
@@ -33,49 +30,21 @@ class LlamaCppBackend(Backend):
         extra_args: list[str],
     ) -> list[str]:
         binary = params.get("binary", "llama-server")
-        ctx_size = params.get("ctx_size", 4096)
-        n_gpu_layers = params.get("n_gpu_layers", "auto")
-        batch_size = params.get("batch_size", 2048)
-        n_parallel = params.get("n_parallel", 1)
-        threads = params.get("threads")
-        flash_attn = params.get("flash_attn")
-        sleep_idle = params.get("sleep_idle_seconds")
-        alias = params.get("alias")
-        mlock = params.get("mlock")
-        no_mmap = params.get("no_mmap")
-        numa = params.get("numa")
-        cont_batching = params.get("cont_batching")
-
         cmd = [
             binary,
             "-m", str(model_path),
             "--host", host,
             "--port", str(port),
-            "-c", str(ctx_size),
-            "-ngl", str(n_gpu_layers),
-            "-b", str(batch_size),
-            "-np", str(n_parallel),
+            "-c", str(params.get("ctx_size", 4096)),
+            "-ngl", str(params.get("n_gpu_layers", "auto")),
+            "-b", str(params.get("batch_size", 2048)),
+            "-np", str(params.get("n_parallel", 1)),
             "--log-file", str(log_file),
         ]
-
-        add_flag(cmd, params, "threads", "-t")
-        add_flag(cmd, params, "alias", "-a")
-        add_flag(cmd, params, "mlock", "--mlock")
-        add_flag(cmd, params, "no_mmap", "--no-mmap")
-        add_flag(cmd, params, "numa", "--numa")
-        add_flag(cmd, params, "cont_batching", "--cont-batching")
-        if flash_attn and flash_attn != "none":
-            if flash_attn is True:
-                cmd.append("-fa")
-            else:
-                cmd.extend(["-fa", str(flash_attn)])
-        if sleep_idle is not None and sleep_idle > 0:
-            cmd.extend(["--sleep-idle-seconds", str(sleep_idle)])
-
         cmd.extend(extra_args)
         return cmd
 
-    def get_env(self, binary_path: str, host: str = "localhost", port: int = 8080) -> dict[str, str]:
+    def get_env(self, binary_path: str) -> dict[str, str]:
         return {"LD_LIBRARY_PATH": str(Path(binary_path).parent)}
 
     @classmethod

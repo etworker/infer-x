@@ -18,12 +18,13 @@ from .router import init_routes, router
 
 _config: ConfigManager | None = None
 _manager: InstanceManager | None = None
+_config_path: str | None = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _config, _manager
-    _config = ConfigManager()
+    _config = ConfigManager(config_path=_config_path)
     _manager = InstanceManager(_config)
     init_routes(_config, _manager)
     logger.info(
@@ -50,11 +51,13 @@ async def index():
 
 
 def main() -> None:
+    global _config_path
     parser = argparse.ArgumentParser(description="InferX - Multi-backend inference engine manager")
     parser.add_argument("--host", default="0.0.0.0", help="Listen host (default: 0.0.0.0)")
     parser.add_argument("--port", type=int, default=8999, help="Listen port (default: 8999)")
     parser.add_argument("--config", default=None, help="Config file path")
     args = parser.parse_args()
+    _config_path = args.config
 
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
 

@@ -1,7 +1,6 @@
 """Comprehensive tests for configuration management."""
 
 import pytest
-from pathlib import Path
 from inferx.config import ConfigManager
 from inferx.models import BackendType, DefaultConfig, Preset
 

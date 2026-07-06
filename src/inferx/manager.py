@@ -121,6 +121,12 @@ class InstanceManager:
     def get_instance_logs(self, inst_id: str, lines: int = 100) -> list[str]:
         return self._proc_mgr.get_logs(inst_id, lines)
 
+    def get_instance_error_logs(self, inst_id: str, lines: int = 50) -> list[str]:
+        return self._proc_mgr.get_error_logs(inst_id, lines)
+
+    def update_instance_tags(self, inst_id: str, tags: dict[str, str]) -> bool:
+        return self._proc_mgr.update_tags(inst_id, tags)
+
     # ---- shutdown -----------------------------------------------------------
 
     async def shutdown(self) -> None:

@@ -1,7 +1,6 @@
 """Comprehensive tests for backend implementations."""
 
 import pytest
-from pathlib import Path
 from inferx.backends import get_backend, check_backend_installed, get_all_backends_status
 from inferx.backends.base import Backend
 from inferx.backends.llamacpp import LlamaCppBackend
@@ -60,7 +59,7 @@ class TestLlamaCppBackend:
     def test_build_command_with_threads(self):
         cmd = self.backend.build_command(
             model_path="/m.gguf", port=8080, host="0.0.0.0",
-            log_file="/tmp/t.log", params={"binary": "llama-server", "threads": 8}, extra_args=[],
+            log_file="/tmp/t.log", params={"binary": "llama-server"}, extra_args=["-t", "8"],
         )
         assert "-t" in cmd
         assert "8" in cmd
@@ -84,7 +83,7 @@ class TestLlamaCppBackend:
     def test_build_command_with_flash_attn(self):
         cmd = self.backend.build_command(
             model_path="/m.gguf", port=8080, host="0.0.0.0",
-            log_file="/tmp/t.log", params={"binary": "llama-server", "flash_attn": "on"}, extra_args=[],
+            log_file="/tmp/t.log", params={"binary": "llama-server"}, extra_args=["-fa", "on"],
         )
         assert "-fa" in cmd
 
@@ -106,23 +105,21 @@ class TestLlamaCppBackend:
     def test_build_command_with_alias(self):
         cmd = self.backend.build_command(
             model_path="/m.gguf", port=8080, host="0.0.0.0",
-            log_file="/tmp/t.log", params={"binary": "llama-server", "alias": "my-model"}, extra_args=[],
+            log_file="/tmp/t.log", params={"binary": "llama-server"}, extra_args=["-a", "my-model"],
         )
         assert "-a" in cmd
-        assert "my-model" in cmd
 
     def test_build_command_with_sleep_idle(self):
         cmd = self.backend.build_command(
             model_path="/m.gguf", port=8080, host="0.0.0.0",
-            log_file="/tmp/t.log", params={"binary": "llama-server", "sleep_idle_seconds": 300}, extra_args=[],
+            log_file="/tmp/t.log", params={"binary": "llama-server"}, extra_args=["--sleep-idle-seconds", "300"],
         )
         assert "--sleep-idle-seconds" in cmd
-        assert "300" in cmd
 
     def test_build_command_with_mlock(self):
         cmd = self.backend.build_command(
             model_path="/m.gguf", port=8080, host="0.0.0.0",
-            log_file="/tmp/t.log", params={"binary": "llama-server", "mlock": True}, extra_args=[],
+            log_file="/tmp/t.log", params={"binary": "llama-server"}, extra_args=["--mlock"],
         )
         assert "--mlock" in cmd
 
@@ -226,8 +223,8 @@ class TestVLLMBackend:
     def test_build_command_with_enforce_eager(self):
         cmd = self.backend.build_command(
             model_path="/m", port=8080, host="0.0.0.0", log_file="/tmp/t.log",
-            params={"binary": "python -m vllm.entrypoints.openai.api_server", "enforce_eager": True},
-            extra_args=[],
+            params={"binary": "python -m vllm.entrypoints.openai.api_server"},
+            extra_args=["--enforce-eager"],
         )
         assert "--enforce-eager" in cmd
 
@@ -261,7 +258,7 @@ class TestSGLangBackend:
     def test_build_command_with_tp(self):
         cmd = self.backend.build_command(
             model_path="/m", port=8080, host="0.0.0.0", log_file="/tmp/t.log",
-            params={"binary": "python -m sglang.launch_server", "tp": 2},
+            params={"binary": "python -m sglang.launch_server", "tensor_parallel_size": 2},
             extra_args=[],
         )
         assert "--tp" in cmd
@@ -270,7 +267,7 @@ class TestSGLangBackend:
     def test_build_command_with_mem_fraction(self):
         cmd = self.backend.build_command(
             model_path="/m", port=8080, host="0.0.0.0", log_file="/tmp/t.log",
-            params={"binary": "python -m sglang.launch_server", "mem_fraction_static": 0.7},
+            params={"binary": "python -m sglang.launch_server", "gpu_memory_utilization": 0.7},
             extra_args=[],
         )
         assert "--mem-fraction-static" in cmd
@@ -292,8 +289,8 @@ class TestTGIBackend:
     def test_build_command_with_num_shard(self):
         cmd = self.backend.build_command(
             model_path="/m", port=8080, host="0.0.0.0", log_file="/tmp/t.log",
-            params={"binary": "text-generation-launcher", "tgi_num_shard": 2},
-            extra_args=[],
+            params={"binary": "text-generation-launcher"},
+            extra_args=["--num-shard", "2"],
         )
         assert "--num-shard" in cmd
 

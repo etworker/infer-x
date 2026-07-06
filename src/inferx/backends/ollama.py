@@ -6,12 +6,10 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from .base import Backend
-from ..models import BackendType
-from .registry import register_backend
+from .base import Backend, register_backend
 
 
-@register_backend(BackendType.ollama)
+@register_backend
 class OllamaBackend(Backend):
     """Ollama inference backend."""
     backend_id = "ollama"
@@ -34,8 +32,8 @@ class OllamaBackend(Backend):
         cmd.extend(extra_args)
         return cmd
 
-    def get_env(self, binary_path: str, host: str = "localhost", port: int = 8080) -> dict[str, str]:
-        return {"OLLAMA_HOST": f"{host}:{port}"}
+    def get_env(self, binary_path: str) -> dict[str, str]:
+        return {}
 
     @classmethod
     def is_installed(cls) -> bool:

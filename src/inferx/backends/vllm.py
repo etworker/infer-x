@@ -5,13 +5,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ._utils import resolve_binary
-from .base import Backend
-from ..models import BackendType
-from .registry import register_backend
+from ._utils import discover_hf_models
+from .base import Backend, register_backend
 
 
-@register_backend(BackendType.vllm)
+@register_backend
 class VLLMBackend(Backend):
     """vLLM inference backend."""
     backend_id = "vllm"
@@ -30,38 +28,25 @@ class VLLMBackend(Backend):
         params: dict[str, Any],
         extra_args: list[str],
     ) -> list[str]:
-        cmd = resolve_binary(params.get("binary", "python -m vllm.entrypoints.openai.api_server"))
+        binary = params.get("binary", "python -m vllm.entrypoints.openai.api_server")
+        cmd = binary.split()
+        cmd.extend(["--model", str(model_path), "--host", host, "--port", str(port)])
 
-        cmd.extend([
-            "--model", str(model_path),
-            "--host", host,
-            "--port", str(port),
-        ])
-
-        from ._utils import add_flag
-        add_flag(cmd, params, "max_model_len", "--max-model-len")
-        add_flag(cmd, params, "max_num_seqs", "--max-num-seqs")
-        add_flag(cmd, params, "max_num_batched_tokens", "--max-num-batched-tokens")
-        add_flag(cmd, params, "quantization", "--quantization")
-        add_flag(cmd, params, "chat_template", "--chat-template")
-        add_flag(cmd, params, "seed", "--seed")
-        add_flag(cmd, params, "max_context_len_to_capture", "--max-context-len-to-capture")
-        add_flag(cmd, params, "trust_remote_code", "--trust-remote-code")
-        add_flag(cmd, params, "disable_log_requests", "--disable-log-requests")
-        add_flag(cmd, params, "enforce_eager", "--enforce-eager")
         if params.get("tensor_parallel_size") and params["tensor_parallel_size"] > 1:
             cmd.extend(["--tensor-parallel-size", str(params["tensor_parallel_size"])])
-        if params.get("pipeline_parallel_size") and params["pipeline_parallel_size"] > 1:
-            cmd.extend(["--pipeline-parallel-size", str(params["pipeline_parallel_size"])])
+        if params.get("max_model_len"):
+            cmd.extend(["--max-model-len", str(params["max_model_len"])])
         if params.get("gpu_memory_utilization") and params["gpu_memory_utilization"] < 1.0:
             cmd.extend(["--gpu-memory-utilization", str(params["gpu_memory_utilization"])])
         if params.get("dtype") and params["dtype"] != "auto":
             cmd.extend(["--dtype", params["dtype"]])
+        if params.get("quantization"):
+            cmd.extend(["--quantization", params["quantization"]])
 
         cmd.extend(extra_args)
         return cmd
 
-    def get_env(self, binary_path: str, host: str = "localhost", port: int = 8080) -> dict[str, str]:
+    def get_env(self, binary_path: str) -> dict[str, str]:
         return {}
 
     @classmethod
@@ -74,29 +59,4 @@ class VLLMBackend(Backend):
             return False
 
     def get_model_paths(self, model_dir: Path) -> list[dict[str, Any]]:
-        """Discover HuggingFace model directories."""
-        models = []
-        if not model_dir.exists():
-            return models
-
-        for p in sorted(model_dir.iterdir()):
-            if not p.is_dir():
-                continue
-
-            config_file = p / "config.json"
-            safetensors_files = list(p.glob("*.safetensors"))
-            bin_files = list(p.glob("*.bin"))
-
-            if config_file.exists() and (safetensors_files or bin_files):
-                total_size = sum(f.stat().st_size for f in safetensors_files) + \
-                             sum(f.stat().st_size for f in bin_files)
-
-                models.append({
-                    "name": p.name,
-                    "path": str(p),
-                    "size_mb": round(total_size / (1024 * 1024), 1) if total_size > 0 else 0,
-                    "family": self._guess_family(p.name),
-                    "quantization": self._guess_quantization(p.name),
-                })
-
-        return models
+        return discover_hf_models(model_dir, self._guess_family, self._guess_quantization)

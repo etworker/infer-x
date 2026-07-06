@@ -2,55 +2,35 @@
 
 from __future__ import annotations
 
-from typing import Any
+from pathlib import Path
+from typing import Any, Callable
 
 
-def resolve_binary(binary: str) -> list[str]:
-    """Split binary command string into parts.
-
-    Handles patterns like:
-      - "llama-server" -> ["llama-server"]
-      - "python -m vllm.entrypoints.openai.api_server" -> ["python", "-m", "vllm.entrypoints.openai.api_server"]
-      - "lmdeploy serve api_server" -> ["lmdeploy", "serve", "api_server"]
-    """
-    if binary.startswith("python"):
-        return binary.split()
-    if " " in binary:
-        return binary.split()
-    return [binary]
-
-
-def add_flag(
-    cmd: list[str],
-    params: dict[str, Any],
-    key: str,
-    flag: str,
-    *,
-    condition: bool | None = None,
-    flag_first: bool = True,
-) -> None:
-    """Append a CLI flag if the param value is present and satisfies condition.
-
-    Patterns:
-      add_flag(cmd, params, "threads", "-t")          -> {"threads": 8}     -> cmd += ["-t", "8"]
-      add_flag(cmd, params, "mlock", "--mlock")        -> {"mlock": True}   -> cmd += ["--mlock"]
-      add_flag(cmd, params, "numa", "--numa")          -> {"numa": "distribute"} -> cmd += ["--numa", "distribute"]
-    """
-    value = params.get(key)
-    if value is None or value is False:
-        return
-    if condition is not None and not condition:
-        return
-    if flag_first:
-        cmd.append(flag)
-    if value is not True:
-        cmd.append(str(value))
-
-
-def add_flag_if(cmd: list[str], flag: str, value: Any, *, when: bool = True) -> None:
-    """Append flag with value only when `when` is true and `value` is not None."""
-    if not when or value is None:
-        return
-    cmd.append(flag)
-    if value is not True:
-        cmd.append(str(value))
+def discover_hf_models(
+    model_dir: Path,
+    guess_family: Callable[[str], str | None],
+    guess_quantization: Callable[[str], str | None],
+) -> list[dict[str, Any]]:
+    """Discover HuggingFace model directories (config.json + safetensors/bin)."""
+    models = []
+    if not model_dir.exists():
+        return models
+    for p in sorted(model_dir.iterdir()):
+        if not p.is_dir():
+            continue
+        config_file = p / "config.json"
+        safetensors_files = list(p.glob("*.safetensors"))
+        bin_files = list(p.glob("*.bin"))
+        if config_file.exists() and (safetensors_files or bin_files):
+            total_size = (
+                sum(f.stat().st_size for f in safetensors_files)
+                + sum(f.stat().st_size for f in bin_files)
+            )
+            models.append({
+                "name": p.name,
+                "path": str(p),
+                "size_mb": round(total_size / (1024 * 1024), 1) if total_size > 0 else 0,
+                "family": guess_family(p.name),
+                "quantization": guess_quantization(p.name),
+            })
+    return models

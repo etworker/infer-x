@@ -60,3 +60,4 @@ data/
 
 # MiCode tooling
 .mimocode/
+tests/*.png
